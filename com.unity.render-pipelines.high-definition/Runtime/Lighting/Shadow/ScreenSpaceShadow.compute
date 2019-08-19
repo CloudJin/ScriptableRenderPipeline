@@ -293,8 +293,7 @@ void DEFERRED_VX_SHADOW_GENERIC(uint2 groupThreadId : SV_GroupThreadID, uint2 gr
     uint4 results[4];
     TraverseVxShadowMapPosQ2x2x2(begin, OFFSET_DIR, posQ, results);
 
-    if (results[0].w == 0 && results[1].w == 0 && results[2].w == 0 && results[3].w == 0 &&
-        results[4].w == 0 && results[5].w == 0 && results[6].w == 0 && results[7].w == 0)
+    if (results[0].w == 0 && results[1].w == 0 && results[2].w == 0 && results[3].w == 0)
     {
         float4 attenuation4_0 = results[2] & 0x000000001 ? 0.0 : 1.0;
         float4 attenuation4_1 = results[2] & 0x000000001 ? 0.0 : 1.0;
