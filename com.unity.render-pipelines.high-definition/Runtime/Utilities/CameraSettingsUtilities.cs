@@ -1,6 +1,6 @@
 using System;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
     /// <summary>Utilities for <see cref="CameraSettings"/>.</summary>
     public static class CameraSettingsUtilities
@@ -13,7 +13,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             var add = cam.GetComponent<HDAdditionalCameraData>()
                 ?? cam.gameObject.AddComponent<HDAdditionalCameraData>();
 
-            // FrameSettings 
+            // FrameSettings
             add.defaultFrameSettings = settings.defaultFrameSettings;
             add.renderingPathCustomFrameSettings = settings.renderingPathCustomFrameSettings;
             add.renderingPathCustomFrameSettingsOverrideMask = settings.renderingPathCustomFrameSettingsOverrideMask;
@@ -26,6 +26,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             // Culling
             cam.useOcclusionCulling = settings.culling.useOcclusionCulling;
             cam.cullingMask = settings.culling.cullingMask;
+            cam.overrideSceneCullingMask = settings.culling.sceneCullingMaskOverride;
             // Buffer clearing
             add.clearColorMode = settings.bufferClearing.clearColorMode;
             add.backgroundColorHDR = settings.bufferClearing.backgroundColorHDR;
@@ -37,6 +38,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             add.customRenderingSettings = settings.customRenderingSettings;
             add.flipYMode = settings.flipYMode;
             add.invertFaceCulling = settings.invertFaceCulling;
+            add.probeCustomFixedExposure = settings.probeRangeCompressionFactor;
         }
 
         /// <summary>Applies <paramref name="settings"/> to <paramref name="cam"/>.</summary>

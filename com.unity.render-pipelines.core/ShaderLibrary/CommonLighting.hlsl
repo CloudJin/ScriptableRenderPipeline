@@ -54,7 +54,7 @@ real ComputeCubemapTexelSolidAngle(real3 L, real texelArea)
 // Ref: "Stupid Spherical Harmonics Tricks", p. 9.
 real ComputeCubemapTexelSolidAngle(real2 uv)
 {
-    float u = uv.x, v = uv.y;
+    real u = uv.x, v = uv.y;
     return pow(1 + u * u + v * v, -1.5);
 }
 
@@ -178,7 +178,7 @@ real EllipsoidalDistanceAttenuation(real3 unL, real3 invHalfDim,
 real BoxDistanceAttenuation(real3 unL, real3 invHalfDim,
                             real rangeAttenuationScale, real rangeAttenuationBias)
 {
-    float attenuation = 0.0;
+    real attenuation = 0.0;
 
     // Transform the light vector so that we can work with
     // with the box as if it was a [-1, 1]^2 cube.
@@ -292,7 +292,13 @@ real GetSpecularOcclusionFromBentAO(real3 V, real3 bentNormalWS, real3 normalWS,
 // Ref: Steve McAuley - Energy-Conserving Wrapped Diffuse
 real ComputeWrappedDiffuseLighting(real NdotL, real w)
 {
-    return saturate((NdotL + w) / ((1 + w) * (1 + w)));
+    return saturate((NdotL + w) / ((1.0 + w) * (1.0 + w)));
+}
+
+// Jimenez variant for eye
+real ComputeWrappedPowerDiffuseLighting(real NdotL, real w, real p)
+{
+    return pow(saturate((NdotL + w) / (1.0 + w)), p) * (p + 1) / (w * 2.0 + 2.0);
 }
 
 // Ref: The Technical Art of Uncharted 4 - Brinck and Maximov 2016
@@ -303,25 +309,40 @@ real ComputeMicroShadowing(real AO, real NdotL, real opacity)
 	return lerp(1.0, microshadow, opacity);
 }
 
+real3 ComputeShadowColor(real shadow, real3 shadowTint, real penumbraFlag)
+{
+    // The origin expression is
+    // lerp(real3(1.0, 1.0, 1.0) - ((1.0 - shadow) * (real3(1.0, 1.0, 1.0) - shadowTint))
+    //            , shadow * lerp(shadowTint, lerp(shadowTint, real3(1.0, 1.0, 1.0), shadow), shadow)
+    //            , penumbraFlag);
+    // it has been simplified to this
+    real3 invTint = real3(1.0, 1.0, 1.0) - shadowTint;
+    real shadow3 = shadow * shadow * shadow;
+    return lerp(real3(1.0, 1.0, 1.0) - ((1.0 - shadow) * invTint)
+                , shadow3 * invTint + shadow * shadowTint,
+                penumbraFlag);
+
+}
 //-----------------------------------------------------------------------------
 // Helper functions
-//-----------------------------------------------------------------------------
+//--------------------------------------------------------------------------- --
 
 // Ref: "Crafting a Next-Gen Material Pipeline for The Order: 1886".
-float ClampNdotV(float NdotV)
+real ClampNdotV(real NdotV)
 {
     return max(NdotV, 0.0001); // Approximately 0.0057 degree bias
 }
 
-// return usual BSDF angle
-void GetBSDFAngle(float3 V, float3 L, float NdotL, float unclampNdotV, out float LdotV, out float NdotH, out float LdotH, out float clampNdotV, out float invLenLV)
+// Helper function to return a set of common angle used when evaluating BSDF
+// NdotL and NdotV are unclamped
+void GetBSDFAngle(real3 V, real3 L, real NdotL, real NdotV,
+                  out real LdotV, out real NdotH, out real LdotH, out real invLenLV)
 {
     // Optimized math. Ref: PBR Diffuse Lighting for GGX + Smith Microsurfaces (slide 114).
     LdotV = dot(L, V);
     invLenLV = rsqrt(max(2.0 * LdotV + 2.0, FLT_EPS));    // invLenLV = rcp(length(L + V)), clamp to avoid rsqrt(0) = inf, inf * 0 = NaN
-    NdotH = saturate((NdotL + unclampNdotV) * invLenLV);        // Do not clamp NdotV here
+    NdotH = saturate((NdotL + NdotV) * invLenLV);
     LdotH = saturate(invLenLV * LdotV + invLenLV);
-    clampNdotV = ClampNdotV(unclampNdotV);
 }
 
 // Inputs:    normalized normal and view vectors.

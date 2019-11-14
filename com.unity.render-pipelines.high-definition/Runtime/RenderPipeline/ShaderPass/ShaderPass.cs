@@ -1,20 +1,17 @@
-using UnityEngine;
-using System;
-
 //-----------------------------------------------------------------------------
 // structure definition
 //-----------------------------------------------------------------------------
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
     [GenerateHLSL(PackingRules.Exact)]
-    public enum ShaderPass
+    enum ShaderPass
     {
         GBuffer,
         Forward,
         ForwardUnlit,
         DeferredLighting,
         DepthOnly,
-        Velocity,
+        MotionVectors,
         Distortion,
         LightTransport,
         Shadows,
@@ -26,8 +23,10 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         ForwardEmissiveProjector,
         ForwardEmissiveMesh,
         Raytracing,
-        RaytracingReflection,
+        RaytracingIndirect,
         RaytracingVisibility,
         RaytracingForward,
+        RaytracingGBuffer,
+        PathTracing,
     }
 }

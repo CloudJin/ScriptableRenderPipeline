@@ -1,23 +1,26 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
-using UnityEditor.Experimental.Rendering.HDPipeline.Drawing;
+using UnityEditor.Rendering.HighDefinition.Drawing;
 using UnityEditor.Graphing;
 using UnityEditor.ShaderGraph;
 using UnityEditor.ShaderGraph.Drawing;
 using UnityEditor.ShaderGraph.Drawing.Controls;
+using UnityEditor.ShaderGraph.Internal;
 using UnityEngine;
 using UnityEngine.UIElements;
-using UnityEngine.Experimental.Rendering.HDPipeline;
+using UnityEngine.Rendering.HighDefinition;
 
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     [Serializable]
     [Title("Master", "HDRP/Decal")]
+    [FormerName("UnityEditor.Experimental.Rendering.HDPipeline.DecalMasterNode")]
     class DecalMasterNode : MasterNode<IDecalSubShader>, IMayRequirePosition, IMayRequireNormal, IMayRequireTangent
     {
-        public const string PositionSlotName = "Position";
+        public const string PositionSlotName = "Vertex Position";
+        public const string PositionSlotDisplayName = "Vertex Position";
         public const int PositionSlotId = 0;
 
         public const string AlbedoSlotName = "Albedo";
@@ -52,7 +55,12 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         public const string EmissionSlotName = "Emission";
         public const string EmissionDisplaySlotName = "Emission";
         public const int EmissionSlotId = 9;
+        
+        public const string VertexNormalSlotName = "Vertex Normal";
+         public const int VertexNormalSlotID = 10;
 
+        public const string VertexTangentSlotName = "Vertex Tangent";
+        public const int VertexTangentSlotID = 11;
 
 
         // Just for convenience of doing simple masks. We could run out of bits of course.
@@ -61,6 +69,8 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         {
             None = 0,
             Position = 1 << PositionSlotId,
+            VertexNormal = 1 << VertexNormalSlotID,
+            VertexTangent = 1 << VertexTangentSlotID,
             Albedo = 1 << AlbedoSlotId,
             AlphaAlbedo = 1 << BaseColorOpacitySlotId,
             Normal = 1 << NormalSlotId,
@@ -72,8 +82,8 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             Emission = 1 << EmissionSlotId
         }
 
-        const SlotMask decalParameter = SlotMask.Position | SlotMask.Albedo | SlotMask.AlphaAlbedo | SlotMask.Normal | SlotMask.AlphaNormal | SlotMask.Metallic | SlotMask.Occlusion | SlotMask.Smoothness | SlotMask.AlphaMAOS | SlotMask.Emission;
-        
+        const SlotMask decalParameter = SlotMask.Position | SlotMask.VertexNormal | SlotMask.VertexTangent | SlotMask.Albedo | SlotMask.AlphaAlbedo | SlotMask.Normal | SlotMask.AlphaNormal | SlotMask.Metallic | SlotMask.Occlusion | SlotMask.Smoothness | SlotMask.AlphaMAOS | SlotMask.Emission;
+
 
         // This could also be a simple array. For now, catch any mismatched data.
         SlotMask GetActiveSlotMask()
@@ -107,10 +117,24 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             // Position
             if (MaterialTypeUsesSlotMask(SlotMask.Position))
             {
-                AddSlot(new PositionMaterialSlot(PositionSlotId, PositionSlotName, PositionSlotName, CoordinateSpace.Object, ShaderStageCapability.Vertex));
+                AddSlot(new PositionMaterialSlot(PositionSlotId, PositionSlotDisplayName, PositionSlotName, CoordinateSpace.Object, ShaderStageCapability.Vertex));
                 validSlots.Add(PositionSlotId);
             }
 
+            //Normal in Vertex
+            if (MaterialTypeUsesSlotMask(SlotMask.VertexNormal))
+            {
+                AddSlot(new NormalMaterialSlot(VertexNormalSlotID, VertexNormalSlotName, VertexNormalSlotName, CoordinateSpace.Object, ShaderStageCapability.Vertex));
+                validSlots.Add(VertexNormalSlotID);
+            }
+
+            //Tangent in Vertex
+            if (MaterialTypeUsesSlotMask(SlotMask.VertexTangent))
+            {
+                AddSlot(new TangentMaterialSlot(VertexTangentSlotID, VertexTangentSlotName, VertexTangentSlotName, CoordinateSpace.Object, ShaderStageCapability.Vertex));
+                validSlots.Add(VertexTangentSlotID);
+            }
+            
             // Albedo
             if (MaterialTypeUsesSlotMask(SlotMask.Albedo))
             {
@@ -237,12 +261,14 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             drawOrder.overrideReferenceName = "_DrawOrder";
             drawOrder.displayName = "Draw Order";
             drawOrder.floatType = FloatType.Integer;
+            drawOrder.hidden = true;
             drawOrder.value = 0;
             collector.AddShaderProperty(drawOrder);
 
             Vector1ShaderProperty decalMeshDepthBias = new Vector1ShaderProperty();
             decalMeshDepthBias.overrideReferenceName = "_DecalMeshDepthBias";
             decalMeshDepthBias.displayName = "DecalMesh DepthBias";
+            decalMeshDepthBias.hidden = true;
             decalMeshDepthBias.floatType = FloatType.Default;
             decalMeshDepthBias.value = 0;
             collector.AddShaderProperty(decalMeshDepthBias);

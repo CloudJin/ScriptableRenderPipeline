@@ -29,6 +29,11 @@ MaterialNodeView #controls > #items {
     padding-bottom: 4px;
 }
 
+MaterialNodeView #title {
+    padding-top: 8px;
+    border-bottom-width: 8px;
+}
+
 MaterialNodeView > #previewContainer {
     position: absolute;
     bottom: 4px;
@@ -112,11 +117,20 @@ MaterialNodeView > #portInputContainer {
     position: absolute;
     width: 232px;
     left: -220px;
-    top: 46px;
+    top: 42px;
 }
 
 MaterialNodeView > #settings-container {
     background-color : rgb(63, 63, 63);
+}
+
+MaterialNodeView.hovered #selection-border{
+    background-color:rgba(68,192,255,0.4);
+    border-color:rgba(68,192,255,1);
+    border-left-width: 2px;
+    border-right-width: 2px;
+    border-top-width: 2px;
+    border-bottom-width: 2px;
 }
 
 #settings-button {

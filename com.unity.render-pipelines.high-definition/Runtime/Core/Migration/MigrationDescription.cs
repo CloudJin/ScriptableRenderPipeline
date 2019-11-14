@@ -1,6 +1,6 @@
 using System;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
     /// <summary>Helpers to manipulate <see cref="MigrationDescription{TVersion, TTarget}"/></summary>
     public static class MigrationDescription
@@ -95,6 +95,14 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                     target.version = Steps[i].Version;
                 }
             }
+
+#if UNITY_EDITOR
+            // Special in prefab case
+            if (target is UnityEngine.Object && UnityEditor.PrefabUtility.IsPartOfNonAssetPrefabInstance(target as UnityEngine.Object))
+            {
+                UnityEditor.PrefabUtility.RecordPrefabInstancePropertyModifications(target as UnityEngine.Object);
+            }
+#endif
             return true;
         }
 

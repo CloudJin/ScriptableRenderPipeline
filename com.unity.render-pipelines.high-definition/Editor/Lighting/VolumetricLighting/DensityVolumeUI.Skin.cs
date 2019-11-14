@@ -1,13 +1,13 @@
 using UnityEngine;
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     static partial class DensityVolumeUI
     {
         internal static class Styles
         {
-            public const string k_VolumeHeader = "Volume";
-            public const string k_DensityMaskTextureHeader = "Density Mask Texture";
+            public static readonly GUIContent k_VolumeHeader = new GUIContent("Volume");
+            public static readonly GUIContent k_DensityMaskTextureHeader = new GUIContent("Density Mask Texture");
 
             public static readonly GUIContent[] s_Toolbar_Contents = new GUIContent[]
             {

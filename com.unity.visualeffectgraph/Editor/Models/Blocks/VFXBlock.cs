@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.Experimental.VFX;
+using UnityEngine.VFX;
 using Type = System.Type;
 
 namespace UnityEditor.VFX
@@ -33,6 +33,24 @@ namespace UnityEditor.VFX
                 m_Disabled = !value;
                 Invalidate(InvalidationCause.kStructureChanged);
             }
+        }
+        public virtual bool isValid
+        {
+            get
+            {
+                if (GetParent() == null) return true; // a block is invalid only if added to incompatible context.
+                if ((compatibleContexts & GetParent().contextType) != GetParent().contextType)
+                    return false;
+                if (GetParent() is VFXBlockSubgraphContext subgraphContext)
+                    return (subgraphContext.compatibleContextType & compatibleContexts) == subgraphContext.compatibleContextType;
+
+                return true;
+            }
+        }
+
+        public bool isActive
+        {
+            get { return enabled && isValid; }
         }
 
         public abstract VFXContextType compatibleContexts { get; }

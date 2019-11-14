@@ -1,10 +1,10 @@
 using System;
 using UnityEngine;
-using UnityEngine.Experimental.VFX;
+using UnityEngine.VFX;
 
 namespace UnityEditor.VFX
 {
-    public class SetSpawnTime : VFXSpawnerCallbacks
+    class SetSpawnTime : VFXSpawnerCallbacks
     {
         private static readonly int spawnTimeID = Shader.PropertyToID("spawnTime");
 

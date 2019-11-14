@@ -1,13 +1,12 @@
 using System;
-using UnityEngine;
-using UnityEngine.Rendering;
+using UnityEngine.Rendering.HighDefinition.Attributes;
 
 //-----------------------------------------------------------------------------
 // structure definition
 //-----------------------------------------------------------------------------
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
-    public class AxF : RenderPipelineMaterial
+    class AxF : RenderPipelineMaterial
     {
         //-----------------------------------------------------------------------------
         // SurfaceData
@@ -17,6 +16,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         [GenerateHLSL(PackingRules.Exact, false, false, true, 1200)]
         public struct SurfaceData
         {
+            [MaterialSharedPropertyMapping(MaterialSharedProperty.Normal)]
             [SurfaceDataAttributes(new string[] {"Normal", "Normal View Space"}, true)]
             public Vector3  normalWS;
 
@@ -24,9 +24,11 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             public Vector3  tangentWS;
 
             // SVBRDF Variables
+            [MaterialSharedPropertyMapping(MaterialSharedProperty.Albedo)]
             [SurfaceDataAttributes("Diffuse Color", false, true)]
             public Vector3  diffuseColor;
 
+            [MaterialSharedPropertyMapping(MaterialSharedProperty.Specular)]
             [SurfaceDataAttributes("Specular Color", false, true)]
             public Vector3  specularColor;
 
@@ -125,16 +127,14 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
         public AxF() {}
 
-        public override void Build(HDRenderPipelineAsset hdAsset)
+        public override void Build(HDRenderPipelineAsset hdAsset, RenderPipelineResources defaultResources)
         {
-            var hdrp = GraphicsSettings.renderPipelineAsset as HDRenderPipelineAsset;
-
             // Create Materials
-            m_preIntegratedFGDMaterial_Ward = CoreUtils.CreateEngineMaterial(hdrp.renderPipelineResources.shaders.preIntegratedFGD_WardPS);
+            m_preIntegratedFGDMaterial_Ward = CoreUtils.CreateEngineMaterial(defaultResources.shaders.preIntegratedFGD_WardPS);
             if (m_preIntegratedFGDMaterial_Ward == null)
                 throw new Exception("Failed to create material for Ward BRDF pre-integration!");
 
-            m_preIntegratedFGDMaterial_CookTorrance = CoreUtils.CreateEngineMaterial(hdrp.renderPipelineResources.shaders.preIntegratedFGD_CookTorrancePS);
+            m_preIntegratedFGDMaterial_CookTorrance = CoreUtils.CreateEngineMaterial(defaultResources.shaders.preIntegratedFGD_CookTorrancePS);
             if (m_preIntegratedFGDMaterial_CookTorrance == null)
                 throw new Exception("Failed to create material for Cook-Torrance BRDF pre-integration!");
 

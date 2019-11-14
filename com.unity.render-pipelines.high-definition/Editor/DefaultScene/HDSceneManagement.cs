@@ -2,17 +2,19 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEditor.SceneManagement;
 using UnityEngine.Rendering;
-using UnityEngine.Experimental.Rendering.HDPipeline;
+using UnityEngine.Rendering.HighDefinition;
 using System;
 using System.Reflection;
 using System.Linq.Expressions;
 
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     [InitializeOnLoad]
-    public class HDSceneManagement : UnityEditor.AssetPostprocessor
+    class HDSceneManagement : UnityEditor.AssetPostprocessor
     {
+        const string defaultSceneNotSetWarning = "Default Scene not set! Set up it in Window > Render Pipeline > HD Render Pipeline Wizard\nStandard default unity scene used instead...";
+
         static Func<string, bool> s_CreateEmptySceneAsset;
 
         static HDSceneManagement()
@@ -39,14 +41,30 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
         static void NewSceneCreated(Scene scene, NewSceneSetup setup, NewSceneMode mode)
         {
-            if (!InHDRP() || HDProjectSettings.defaultScenePrefab == null)
+            if (!InHDRP())
                 return; // do not interfere outside of hdrp
+
+            if (((HDRenderPipeline.currentAsset?.currentPlatformRenderPipelineSettings.supportRayTracing ?? false)
+                && HDProjectSettings.defaultDXRScenePrefab == null)
+                || HDProjectSettings.defaultScenePrefab == null)
+            {
+                Debug.LogWarning(defaultSceneNotSetWarning);
+                return;
+            }
 
             if (setup == NewSceneSetup.DefaultGameObjects)
             {
                 ClearScene(scene);
                 FillScene(scene);
             }
+        }
+
+        static GameObject GetScenePrefab()
+        {
+            if (HDRenderPipeline.currentAsset?.currentPlatformRenderPipelineSettings.supportRayTracing ?? false)
+                return HDProjectSettings.defaultDXRScenePrefab;
+            else
+                return HDProjectSettings.defaultScenePrefab;
         }
 
         // Note: Currently we do not add Empty scene in the HDRP package.
@@ -58,7 +76,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         [MenuItem("Assets/Create/HD Template Scene", true, 200)]
         static bool InHDRP()
         {
-            return GraphicsSettings.renderPipelineAsset is HDRenderPipelineAsset;
+            return GraphicsSettings.currentRenderPipeline is HDRenderPipelineAsset;
         }
 
         // Note: Currently we do not add Empty scene in the HDRP package.
@@ -109,6 +127,12 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         {
             public override void Action(int instanceId, string pathName, string resourceFile)
             {
+                if (HDProjectSettings.defaultScenePrefab == null)
+                {
+                    Debug.LogWarning(defaultSceneNotSetWarning);
+                    return;
+                }
+
                 if (s_CreateEmptySceneAsset(pathName))
                 {
                     UnityEngine.Object sceneAsset = AssetDatabase.LoadAssetAtPath(pathName, typeof(SceneAsset));
@@ -133,7 +157,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
         static void FillScene(Scene scene)
         {
-            HDRenderPipelineAsset hdrpAsset = (GraphicsSettings.renderPipelineAsset as HDRenderPipelineAsset);
+            HDRenderPipelineAsset hdrpAsset = HDRenderPipeline.defaultAsset;
             if (hdrpAsset == null || hdrpAsset.Equals(null))
                 return;
 
@@ -143,7 +167,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 return;
             }
 
-            GameObject root = GameObject.Instantiate(HDProjectSettings.defaultScenePrefab);
+            GameObject root = GameObject.Instantiate(GetScenePrefab());
             SceneManager.MoveGameObjectToScene(root, scene);
             root.transform.DetachChildren();
             GameObject.DestroyImmediate(root);

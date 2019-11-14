@@ -1,8 +1,8 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine.Serialization;
-using UnityEngine.Rendering;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
     [Serializable]
     public class HDPhysicalCamera
@@ -85,9 +85,10 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         }
     }
 
+    [HelpURL(Documentation.baseURL + Documentation.version + Documentation.subURL + "HDRP-Camera" + Documentation.endURL)]
     [DisallowMultipleComponent, ExecuteAlways]
     [RequireComponent(typeof(Camera))]
-    public partial class HDAdditionalCameraData : MonoBehaviour
+    public partial class HDAdditionalCameraData : MonoBehaviour, IFrameSettingsHistoryContainer
     {
         public enum FlipYMode
         {
@@ -113,23 +114,36 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         {
             None,
             FastApproximateAntialiasing,
-            TemporalAntialiasing
+            TemporalAntialiasing,
+            SubpixelMorphologicalAntiAliasing
         }
+
+        public enum SMAAQualityLevel
+        {
+            Low,
+            Medium,
+            High
+        }
+
 
         public ClearColorMode clearColorMode = ClearColorMode.Sky;
         [ColorUsage(true, true)]
         public Color backgroundColorHDR = new Color(0.025f, 0.07f, 0.19f, 0.0f);
         public bool clearDepth = true;
-        
+
 
         [Tooltip("LayerMask HDRP uses for Volume interpolation for this Camera.")]
-        public LayerMask volumeLayerMask = -1;
+        public LayerMask volumeLayerMask = 1;
 
         public Transform volumeAnchorOverride;
 
         public AntialiasingMode antialiasing = AntialiasingMode.None;
+        public SMAAQualityLevel SMAAQuality = SMAAQualityLevel.High;
         public bool dithering = false;
         public bool stopNaNs = false;
+
+        [Range(0, 2)]
+        public float taaSharpenStrength = 0.6f;
 
         // Physical parameters
         public HDPhysicalCamera physicalParameters = new HDPhysicalCamera();
@@ -139,6 +153,9 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         [Tooltip("Skips rendering settings to directly render in fullscreen (Useful for video).")]
         public bool fullscreenPassthrough = false;
 
+        [Tooltip("Allows dynamic resolution on buffers linked to this camera.")]
+        public bool allowDynamicResolution = false;
+
         [Tooltip("Allows you to override the default settings for this Renderer.")]
         public bool customRenderingSettings = false;
 
@@ -146,9 +163,16 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
         public LayerMask probeLayerMask = ~0;
 
+        /// <summary>
+        /// Enable to retain history buffers even if the camera is disabled.
+        /// </summary>
+        public bool hasPersistentHistory = false;
+
         // Event used to override HDRP rendering for this particular camera.
         public event Action<ScriptableRenderContext, HDCamera> customRender;
         public bool hasCustomRender { get { return customRender != null; } }
+
+        internal float probeCustomFixedExposure = 1.0f;
 
         [SerializeField, FormerlySerializedAs("renderingPathCustomFrameSettings")]
         FrameSettings m_RenderingPathCustomFrameSettings = FrameSettings.defaultCamera;
@@ -157,15 +181,138 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
         public ref FrameSettings renderingPathCustomFrameSettings => ref m_RenderingPathCustomFrameSettings;
 
+        bool IFrameSettingsHistoryContainer.hasCustomFrameSettings
+            => customRenderingSettings;
+
+        FrameSettingsOverrideMask IFrameSettingsHistoryContainer.frameSettingsMask
+            => renderingPathCustomFrameSettingsOverrideMask;
+
+        FrameSettings IFrameSettingsHistoryContainer.frameSettings
+            => m_RenderingPathCustomFrameSettings;
+
+        FrameSettingsHistory m_RenderingPathHistory = new FrameSettingsHistory()
+        {
+            defaultType = FrameSettingsRenderType.Camera
+        };
+
+        FrameSettingsHistory IFrameSettingsHistoryContainer.frameSettingsHistory
+        {
+            get => m_RenderingPathHistory;
+            set => m_RenderingPathHistory = value;
+        }
+
+        string IFrameSettingsHistoryContainer.panelName
+            => m_CameraRegisterName;
+
+        Action IDebugData.GetReset()
+                //caution: we actually need to retrieve the right
+                //m_FrameSettingsHistory as it is a struct so no direct
+                // => m_FrameSettingsHistory.TriggerReset
+                => () => m_RenderingPathHistory.TriggerReset();
+
+        AOVRequestDataCollection m_AOVRequestDataCollection = new AOVRequestDataCollection(null);
+
+        /// <summary>Set AOV requests to use.</summary>
+        /// <param name="aovRequests">Describes the requests to execute.</param>
+        /// <example>
+        /// <code>
+        /// using System.Collections.Generic;
+        /// using UnityEngine;
+        /// using UnityEngine.Rendering;
+        /// using UnityEngine.Rendering.HighDefinition;
+        /// using UnityEngine.Rendering.HighDefinition.Attributes;
+        ///
+        /// [ExecuteAlways]
+        /// [RequireComponent(typeof(Camera))]
+        /// [RequireComponent(typeof(HDAdditionalCameraData))]
+        /// public class SetupAOVCallbacks : MonoBehaviour
+        /// {
+        ///     private static RTHandle m_ColorRT;
+        ///
+        ///     [SerializeField] private Texture m_Target;
+        ///     [SerializeField] private DebugFullScreen m_DebugFullScreen;
+        ///     [SerializeField] private DebugLightFilterMode m_DebugLightFilter;
+        ///     [SerializeField] private MaterialSharedProperty m_MaterialSharedProperty;
+        ///     [SerializeField] private LightingProperty m_LightingProperty;
+        ///     [SerializeField] private AOVBuffers m_BuffersToCopy;
+        ///     [SerializeField] private List<GameObject> m_IncludedLights;
+        ///
+        ///
+        ///     void OnEnable()
+        ///     {
+        ///         var aovRequest = new AOVRequest(AOVRequest.@default)
+        ///             .SetLightFilter(m_DebugLightFilter);
+        ///         if (m_DebugFullScreen != DebugFullScreen.None)
+        ///             aovRequest = aovRequest.SetFullscreenOutput(m_DebugFullScreen);
+        ///         if (m_MaterialSharedProperty != MaterialSharedProperty.None)
+        ///             aovRequest = aovRequest.SetFullscreenOutput(m_MaterialSharedProperty);
+        ///         if (m_LightingProperty != LightingProperty.None)
+        ///             aovRequest = aovRequest.SetFullscreenOutput(m_LightingProperty);
+        ///
+        ///         var add = GetComponent<HDAdditionalCameraData>();
+        ///         add.SetAOVRequests(
+        ///             new AOVRequestBuilder()
+        ///                 .Add(
+        ///                     aovRequest,
+        ///                     bufferId => m_ColorRT ?? (m_ColorRT = RTHandles.Alloc(512, 512)),
+        ///                     m_IncludedLights.Count > 0 ? m_IncludedLights : null,
+        ///                     new []{ m_BuffersToCopy },
+        ///                     (cmd, textures, properties) =>
+        ///                     {
+        ///                         if (m_Target != null)
+        ///                             cmd.Blit(textures[0], m_Target);
+        ///                     })
+        ///                 .Build()
+        ///         );
+        ///     }
+        ///
+        ///     private void OnGUI()
+        ///     {
+        ///         GUI.DrawTexture(new Rect(10, 10, 512, 256), m_Target);
+        ///     }
+        ///
+        ///     void OnDisable()
+        ///     {
+        ///         var add = GetComponent<HDAdditionalCameraData>();
+        ///         add.SetAOVRequests(null);
+        ///     }
+        ///
+        ///     void OnValidate()
+        ///     {
+        ///         OnDisable();
+        ///         OnEnable();
+        ///     }
+        /// }
+        /// </code>
+        ///
+        /// Example use case:
+        /// * Export Normals: use MaterialSharedProperty.Normals and AOVBuffers.Color
+        /// * Export Color before post processing: use AOVBuffers.Color
+        /// * Export Color after post processing: use AOVBuffers.Output
+        /// * Export Depth stencil: use AOVBuffers.DepthStencil
+        /// * Export AO: use MaterialSharedProperty.AmbientOcclusion and AOVBuffers.Color
+        /// </example>
+        public void SetAOVRequests(AOVRequestDataCollection aovRequests)
+            => m_AOVRequestDataCollection = aovRequests;
+
+        /// <summary>
+        /// Use this property to get the aov requests.
+        ///
+        /// It is never null.
+        /// </summary>
+        public IEnumerable<AOVRequestData> aovRequests =>
+            m_AOVRequestDataCollection ?? (m_AOVRequestDataCollection = new AOVRequestDataCollection(null));
+
         // Use for debug windows
         // When camera name change we need to update the name in DebugWindows.
         // This is the purpose of this class
         bool m_IsDebugRegistered = false;
         string m_CameraRegisterName;
 
-        public bool IsDebugRegistred()
+        public bool isDebugRegistred
         {
-            return m_IsDebugRegistered;
+            get => m_IsDebugRegistered;
+            internal set => m_IsDebugRegistered = value;
         }
 
         // When we are a preview, there is no way inside Unity to make a distinction between camera preview and material preview.
@@ -188,6 +335,8 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             data.renderingPathCustomFrameSettings = renderingPathCustomFrameSettings;
             data.renderingPathCustomFrameSettingsOverrideMask = renderingPathCustomFrameSettingsOverrideMask;
             data.defaultFrameSettings = defaultFrameSettings;
+
+            data.probeCustomFixedExposure = probeCustomFixedExposure;
 
             // We must not copy the following
             //data.m_IsDebugRegistered = m_IsDebugRegistered;
@@ -212,27 +361,24 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                 // doesn't affect the serialized version
                 // Note camera's preview camera is registered with preview type but then change to game type that lead to issue.
                 // Do not attempt to not register them till this issue persist.
-                if (/*m_camera.cameraType != CameraType.Preview &&*/ m_camera.cameraType != CameraType.Reflection)
+                m_CameraRegisterName = name;
+                if (m_camera.cameraType != CameraType.Preview && m_camera.cameraType != CameraType.Reflection)
                 {
-                    DebugDisplaySettings.RegisterCamera(m_camera, this);
+                    DebugDisplaySettings.RegisterCamera(this);
                 }
-                m_CameraRegisterName = m_camera.name;
                 m_IsDebugRegistered = true;
             }
         }
 
         void UnRegisterDebug()
         {
-            if (m_camera == null)
-                return;
-
             if (m_IsDebugRegistered)
             {
                 // Note camera's preview camera is registered with preview type but then change to game type that lead to issue.
                 // Do not attempt to not register them till this issue persist.
-                if (/*m_camera.cameraType != CameraType.Preview &&*/ m_camera.cameraType != CameraType.Reflection)
+                if (m_camera.cameraType != CameraType.Preview && m_camera?.cameraType != CameraType.Reflection)
                 {
-                    DebugDisplaySettings.UnRegisterCamera(m_camera, this);
+                    DebugDisplaySettings.UnRegisterCamera(this);
                 }
                 m_IsDebugRegistered = false;
             }
@@ -252,24 +398,28 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             m_camera.allowHDR = false;
 
             RegisterDebug();
+
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.hierarchyChanged += UpdateDebugCameraName;
+#endif
         }
 
-        void Update()
+        void UpdateDebugCameraName()
         {
-            // We need to detect name change in the editor and update debug windows accordingly
-#if UNITY_EDITOR
-            // Caution: Object.name generate 48B of garbage at each frame here !
-            if (m_camera.name != m_CameraRegisterName)
+            if (name != m_CameraRegisterName)
             {
                 UnRegisterDebug();
                 RegisterDebug();
             }
-#endif
         }
 
         void OnDisable()
         {
             UnRegisterDebug();
+
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.hierarchyChanged -= UpdateDebugCameraName;
+#endif
         }
 
         // This is called at the creation of the HD Additional Camera Data, to convert the legacy camera settings to HD

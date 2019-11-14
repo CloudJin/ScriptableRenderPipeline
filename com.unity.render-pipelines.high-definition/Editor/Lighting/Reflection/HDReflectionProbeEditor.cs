@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Assertions;
-using UnityEngine.Experimental.Rendering.HDPipeline;
+using UnityEngine.Rendering.HighDefinition;
 using UnityEditor.Rendering;
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     [CustomEditorForRenderPipeline(typeof(ReflectionProbe), typeof(HDRenderPipelineAsset))]
     [CanEditMultipleObjects]
@@ -56,7 +56,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             => ((ReflectionProbe)editorTarget).GetComponent<HDAdditionalReflectionData>();
         protected override SerializedHDReflectionProbe NewSerializedObject(SerializedObject so)
         {
-            var additionalData = CoreEditorUtils.GetAdditionalData<HDAdditionalReflectionData>(targets);
+            var additionalData = CoreEditorUtils.GetAdditionalData<HDAdditionalReflectionData>(so.targetObjects);
             var addSO = new SerializedObject(additionalData);
             return new SerializedHDReflectionProbe(so, addSO);
         }
@@ -83,18 +83,27 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 )
             }
         };
+
+        public ProbeSettingsOverride displayedAdvancedCaptureSettings => new ProbeSettingsOverride();
         ProbeSettingsOverride HDProbeUI.IProbeUISettingsProvider.overrideableCaptureSettings => new ProbeSettingsOverride();
-        ProbeSettingsOverride HDProbeUI.IProbeUISettingsProvider.displayedAdvancedSettings => new ProbeSettingsOverride
+        public ProbeSettingsOverride overrideableAdvancedCaptureSettings => new ProbeSettingsOverride();
+
+        ProbeSettingsOverride HDProbeUI.IProbeUISettingsProvider.displayedCustomSettings => new ProbeSettingsOverride
         {
             probe = ProbeSettingsFields.lightingLightLayer
                 | ProbeSettingsFields.lightingMultiplier
-                | ProbeSettingsFields.lightingWeight,
+                | ProbeSettingsFields.lightingWeight
+                | ProbeSettingsFields.lightingFadeDistance
+                | ProbeSettingsFields.lightingRangeCompression,
             camera = new CameraSettingsOverride
             {
                 camera = CameraSettingsFields.none
             }
         };
-        ProbeSettingsOverride HDProbeUI.IProbeUISettingsProvider.overrideableAdvancedSettings => new ProbeSettingsOverride();
+        ProbeSettingsOverride HDProbeUI.IProbeUISettingsProvider.overrideableCustomSettings => new ProbeSettingsOverride();
+
+        public ProbeSettingsOverride displayedAdvancedCustomSettings => new ProbeSettingsOverride();
+        public ProbeSettingsOverride overrideableAdvancedCustomSettings => new ProbeSettingsOverride();
 
         Type HDProbeUI.IProbeUISettingsProvider.customTextureType => typeof(Cubemap);
         static readonly HDProbeUI.ToolBar[] k_ToolBars

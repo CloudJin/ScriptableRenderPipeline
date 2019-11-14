@@ -1,8 +1,7 @@
-using UnityEditor.Rendering;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering.HDPipeline;
+using UnityEngine.Rendering.HighDefinition;
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     internal class SerializedPlanarReflectionProbe : SerializedHDProbe
     {
@@ -29,7 +28,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
 #if !ENABLE_BAKED_PLANAR
             // Switch to realtime mode as other modes are not supported.
-            probeSettings.mode.enumValueIndex = (int)ProbeSettings.Mode.Realtime;
+            probeSettings.mode.SetEnumValue(ProbeSettings.Mode.Realtime);
 #endif
 
             serializedObject.ApplyModifiedProperties();

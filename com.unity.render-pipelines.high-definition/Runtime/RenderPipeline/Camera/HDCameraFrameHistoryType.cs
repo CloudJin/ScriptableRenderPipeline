@@ -1,4 +1,4 @@
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
     public enum HDCameraFrameHistoryType
     {
@@ -7,9 +7,16 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         Exposure,
         TemporalAntialiasing,
         DepthOfFieldCoC,
-#if ENABLE_RAYTRACING
+        Normal,
+        Depth,
+        AmbientOcclusion,
+        RaytracedAmbientOcclusion,
+        RaytracedShadow,
+        RaytracedAreaAnalytic,
         RaytracedReflection,
-#endif
+        RaytracedIndirectDiffuseHF,
+        RaytracedIndirectDiffuseLF,
+        PathTracing,
         Count
     }
 }

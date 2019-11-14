@@ -1,6 +1,7 @@
 using System;
+using UnityEngine.Serialization;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
     [ExecuteAlways]
     public abstract partial class HDProbe : MonoBehaviour
@@ -8,15 +9,45 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         [Serializable]
         public struct RenderData
         {
-            public Matrix4x4 worldToCameraRHS;
-            public Matrix4x4 projectionMatrix;
-            public Vector3 capturePosition;
+            [SerializeField, FormerlySerializedAs("worldToCameraRHS")]
+            Matrix4x4 m_WorldToCameraRHS;
+            [SerializeField, FormerlySerializedAs("projectionMatrix")]
+            Matrix4x4 m_ProjectionMatrix;
+            [SerializeField, FormerlySerializedAs("capturePosition")]
+            Vector3 m_CapturePosition;
+            Quaternion m_CaptureRotation;
+            float m_FieldOfView;
+
+            public Matrix4x4 worldToCameraRHS => m_WorldToCameraRHS;
+            public Matrix4x4 projectionMatrix => m_ProjectionMatrix;
+            public Vector3 capturePosition => m_CapturePosition;
+            public Quaternion captureRotation => m_CaptureRotation;
+            public float fieldOfView => m_FieldOfView;
 
             public RenderData(CameraSettings camera, CameraPositionSettings position)
+                : this(
+                    position.GetUsedWorldToCameraMatrix(),
+                    camera.frustum.GetUsedProjectionMatrix(),
+                    position.position,
+                    position.rotation,
+                    camera.frustum.fieldOfView
+                )
             {
-                worldToCameraRHS = position.GetUsedWorldToCameraMatrix();
-                projectionMatrix = camera.frustum.GetUsedProjectionMatrix();
-                capturePosition = position.position;
+            }
+
+            public RenderData(
+                Matrix4x4 worldToCameraRHS,
+                Matrix4x4 projectionMatrix,
+                Vector3 capturePosition,
+                Quaternion captureRotation,
+                float fov
+            )
+            {
+                m_WorldToCameraRHS = worldToCameraRHS;
+                m_ProjectionMatrix = projectionMatrix;
+                m_CapturePosition = capturePosition;
+                m_CaptureRotation = captureRotation;
+                m_FieldOfView = fov;
             }
         }
 
@@ -40,6 +71,11 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         RenderData m_BakedRenderData;
         [SerializeField]
         RenderData m_CustomRenderData;
+
+        // Only used in editor, but this data needs to be probe instance specific
+        // (Contains: UI section states)
+        [SerializeField]
+        uint m_EditorOnlyData;
 
         // Runtime Data
         RenderTexture m_RealtimeTexture;
@@ -136,6 +172,13 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         /// <summary>Weight for blending amongst probes (non PBR parameter).</summary>
         public float weight
         { get => m_ProbeSettings.lighting.weight; set => m_ProbeSettings.lighting.weight = value; }
+        /// <summary>The distance at which reflections smoothly fade out before HDRP cut them completely.</summary>
+        public float fadeDistance
+        { get => m_ProbeSettings.lighting.fadeDistance; set => m_ProbeSettings.lighting.fadeDistance = value; }
+        /// <summary>The result of the rendering of the probe will be divided by this factor. When the probe is read, this factor is undone as the probe data is read. This is to simply avoid issues with values clamping due to precision of the storing format.</summary>
+        public float rangeCompressionFactor
+        { get => m_ProbeSettings.lighting.rangeCompressionFactor; set => m_ProbeSettings.lighting.rangeCompressionFactor = value; }
+
 
         // Proxy
         /// <summary>ProxyVolume currently used by this probe.</summary>
@@ -157,8 +200,8 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
         // Camera
         /// <summary>Frame settings in use with this probe.</summary>
-        public ref FrameSettings frameSettings => ref m_ProbeSettings.camera.renderingPathCustomFrameSettings;
-        public FrameSettingsOverrideMask frameSettingsOverrideMask => m_ProbeSettings.camera.renderingPathCustomFrameSettingsOverrideMask;
+        public ref FrameSettings frameSettings => ref m_ProbeSettings.cameraSettings.renderingPathCustomFrameSettings;
+        public FrameSettingsOverrideMask frameSettingsOverrideMask => m_ProbeSettings.cameraSettings.renderingPathCustomFrameSettingsOverrideMask;
         internal Vector3 influenceExtents => influenceVolume.extents;
         internal Matrix4x4 proxyToWorld
             => proxyVolume != null
@@ -219,10 +262,12 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         void OnValidate()
         {
             HDProbeSystem.UnregisterProbe(this);
-            PrepareCulling();
 
             if (isActiveAndEnabled)
+            {
+                PrepareCulling();
                 HDProbeSystem.RegisterProbe(this);
+            }
         }
     }
 }

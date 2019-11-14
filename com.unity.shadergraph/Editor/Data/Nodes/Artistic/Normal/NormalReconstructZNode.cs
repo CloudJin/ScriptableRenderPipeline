@@ -18,14 +18,14 @@ namespace UnityEditor.ShaderGraph
 
         static string NormalReconstructZ(
             [Slot(0, Binding.None)] Vector2 In,
-            [Slot(2, Binding.None, ShaderStageCapability.Fragment)] out Vector3 Out)
+            [Slot(2, Binding.None)] out Vector3 Out)
         {
             Out = Vector3.zero;
             return
                 @"
 {
-    {precision} reconstructZ = sqrt(1.0 - saturate(dot(In.xy, In.xy)));
-    {precision}3 normalVector = {precision}3(In.x, In.y, reconstructZ);
+    $precision reconstructZ = sqrt(1.0 - saturate(dot(In.xy, In.xy)));
+    $precision3 normalVector = $precision3(In.x, In.y, reconstructZ);
     Out = normalize(normalVector);
 }";
         }

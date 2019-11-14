@@ -28,6 +28,7 @@ Shader "Hidden/HDRP/DebugFullScreen"
 
             CBUFFER_START (UnityDebug)
             float _FullScreenDebugMode;
+            float _TransparencyOverdrawMaxPixelCost;
             CBUFFER_END
 
             TEXTURE2D_X(_DebugFullScreenTexture);
@@ -35,20 +36,23 @@ Shader "Hidden/HDRP/DebugFullScreen"
             struct Attributes
             {
                 uint vertexID : SV_VertexID;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
                 float2 texcoord : TEXCOORD0;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             Varyings Vert(Attributes input)
             {
                 Varyings output;
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
                 output.positionCS = GetFullScreenTriangleVertexPosition(input.vertexID);
                 output.texcoord = GetNormalizedFullScreenTriangleTexCoord(input.vertexID);
-
                 return output;
             }
 
@@ -116,15 +120,17 @@ Shader "Hidden/HDRP/DebugFullScreen"
             // return motion vector in NDC space [0..1]
             float2 SampleMotionVectors(float2 coords)
             {
-                float2 velocityNDC;
-                DecodeVelocity(SAMPLE_TEXTURE2D_X(_DebugFullScreenTexture, s_point_clamp_sampler, coords), velocityNDC);
+                float2 motionVectorNDC;
+                DecodeMotionVector(SAMPLE_TEXTURE2D_X(_DebugFullScreenTexture, s_point_clamp_sampler, coords), motionVectorNDC);
 
-                return velocityNDC;
+                return motionVectorNDC;
             }
             // end motion vector utilties
 
             float4 Frag(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
+
                 // Note: If the single shadow debug mode is enabled, we don't render other full screen debug modes
                 // and the value of _FullScreenDebugMode is forced to 0
                 if (_DebugShadowMapMode == SHADOWMAPDEBUGMODE_SINGLE_SHADOW)
@@ -157,9 +163,19 @@ Shader "Hidden/HDRP/DebugFullScreen"
                     float4 color = SAMPLE_TEXTURE2D_X(_DebugFullScreenTexture, s_point_clamp_sampler, input.texcoord);
                     return color;
                 }
-                if( _FullScreenDebugMode == FULLSCREENDEBUGMODE_RAYTRACED_AREA_SHADOW)
+                if( _FullScreenDebugMode == FULLSCREENDEBUGMODE_RAY_TRACED_GLOBAL_ILLUMINATION)
                 {
                     float4 color = SAMPLE_TEXTURE2D_X(_DebugFullScreenTexture, s_point_clamp_sampler, input.texcoord);
+                    return color;
+                }
+                if( _FullScreenDebugMode == FULLSCREENDEBUGMODE_RECURSIVE_RAY_TRACING)
+                {
+                    float4 color = SAMPLE_TEXTURE2D_X(_DebugFullScreenTexture, s_point_clamp_sampler, input.texcoord);
+                    return color;
+                }
+                if ( _FullScreenDebugMode == FULLSCREENDEBUGMODE_SCREEN_SPACE_SHADOWS)
+                {
+                    float4 color = LOAD_TEXTURE2D_X(_DebugFullScreenTexture, (uint2)input.positionCS.xy);
                     return color;
                 }
                 if (_FullScreenDebugMode == FULLSCREENDEBUGMODE_MOTION_VECTORS)
@@ -167,7 +183,8 @@ Shader "Hidden/HDRP/DebugFullScreen"
                     float2 mv = SampleMotionVectors(input.texcoord);
 
                     // Background color intensity - keep this low unless you want to make your eyes bleed
-                    const float kIntensity = 0.15;
+                    const float kMinIntensity = 0.03f;
+                    const float kMaxIntensity = 0.50f;
 
                     // Map motion vector direction to color wheel (hue between 0 and 360deg)
                     float phi = atan2(mv.x, mv.y);
@@ -176,7 +193,10 @@ Shader "Hidden/HDRP/DebugFullScreen"
                     float g = 2.0 - abs(hue * 6.0 - 2.0);
                     float b = 2.0 - abs(hue * 6.0 - 4.0);
 
-                    float3 color = saturate(float3(r, g, b) * kIntensity);
+                    float maxSpeed = 60.0f / 0.15f; // Admit that 15% of a move the viewport by second at 60 fps is really fast
+                    float absoluteLength = saturate(length(mv.xy) * maxSpeed);
+                    float3 color = float3(r, g, b) * lerp(kMinIntensity, kMaxIntensity, absoluteLength);
+                    color = saturate(color);
 
                     // Grid subdivisions - should be dynamic
                     const float kGrid = 64.0;
@@ -187,17 +207,20 @@ Shader "Hidden/HDRP/DebugFullScreen"
                     float cols = kGrid;
                     float2 size = _ScreenSize.xy / float2(cols, rows);
                     float body = min(size.x, size.y) / sqrt(2.0);
-                    float2 positionSS = input.texcoord.xy / _ScreenToTargetScale.xy;
+                    float2 positionSS = input.texcoord.xy / _RTHandleScale.xy;
                     positionSS *= _ScreenSize.xy;
                     float2 center = (floor(positionSS / size) + 0.5) * size;
                     positionSS -= center;
 
                     // Sample the center of the cell to get the current arrow vector
-                    float2 arrow_coord = center * _ScreenSize.zw;
-
-                    arrow_coord *= _ScreenToTargetScale.xy;
-
-                    float2 mv_arrow = SampleMotionVectors(arrow_coord);
+                    float2 mv_arrow = 0.0f;
+#if DONT_USE_NINE_TAP_FILTER
+                    mv_arrow = SampleMotionVectors(center * _ScreenSize.zw * _RTHandleScale.xy);
+#else
+                    for (int i = -1; i <= 1; ++i) for (int j = -1; j <= 1; ++j)
+                        mv_arrow += SampleMotionVectors((center + float2(i, j)) * _RTHandleScale.xy * _ScreenSize.zw);
+                    mv_arrow /= 9.0f;
+#endif
                     mv_arrow.y *= -1;
 
                     // Skip empty motion
@@ -215,18 +238,46 @@ Shader "Hidden/HDRP/DebugFullScreen"
 
                     return float4(color + d.xxx, 1.0);
                 }
+                if (_FullScreenDebugMode == FULLSCREENDEBUGMODE_COLOR_LOG)
+                {
+                    float4 color = LOAD_TEXTURE2D_X(_DebugFullScreenTexture, (uint2)input.positionCS.xy);
+                    return color;
+                }
+                if (_FullScreenDebugMode == FULLSCREENDEBUGMODE_DEPTH_OF_FIELD_COC)
+                {
+                    float coc = LOAD_TEXTURE2D_X(_DebugFullScreenTexture, (uint2)input.positionCS.xy).x;
+
+                    float3 color = lerp(float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 1.0), saturate(-coc));
+                    color = lerp(color, float3(1.0, 1.0, 1.0), saturate(coc));
+
+                    const float kPeakingThreshold = 0.01;
+                    if (abs(coc) <= kPeakingThreshold)
+                        color = lerp(float3(0.0, 0.0, 1.0), color, PositivePow(abs(coc) / kPeakingThreshold, 2.0));
+
+                    return float4(color, 1.0);
+                }
                 if (_FullScreenDebugMode == FULLSCREENDEBUGMODE_CONTACT_SHADOWS)
                 {
-                    float4 color = SAMPLE_TEXTURE2D_X(_DebugFullScreenTexture, s_point_clamp_sampler, input.texcoord);
-                    return float4(1.0f - color.rrr, 0.0);
-                }
+                    uint contactShadowData = LOAD_TEXTURE2D_X(_ContactShadowTexture, input.texcoord * _ScreenSize.xy).r;
 
+                    // when the index is -1 we display all contact shadows
+                    uint mask = (_DebugContactShadowLightIndex == -1) ? -1 : 1 << _DebugContactShadowLightIndex;
+                    float lightContactShadow = (contactShadowData & mask) != 0;
+
+                    return float4(1.0 - lightContactShadow.xxx, 0.0);
+                }
+                if (_FullScreenDebugMode == FULLSCREENDEBUGMODE_CONTACT_SHADOWS_FADE)
+                {
+                    uint contactShadowData = LOAD_TEXTURE2D_X(_ContactShadowTexture, input.texcoord * _ScreenSize.xy).r;
+                    float fade = float((contactShadowData >> 24)) / 255.0;
+
+                    return float4(fade.xxx, 0.0);
+                }
                 if (_FullScreenDebugMode == FULLSCREENDEBUGMODE_SCREEN_SPACE_REFLECTIONS)
                 {
-                    float4 color = SAMPLE_TEXTURE2D_X(_DebugFullScreenTexture, s_point_clamp_sampler, input.texcoord);
+                    float4 color = SAMPLE_TEXTURE2D_X(_DebugFullScreenTexture, s_point_clamp_sampler, input.texcoord) * GetCurrentExposureMultiplier();
                     return float4(color.rgb, 1.0f);
                 }
-
                 if (_FullScreenDebugMode == FULLSCREENDEBUGMODE_PRE_REFRACTION_COLOR_PYRAMID
                     || _FullScreenDebugMode == FULLSCREENDEBUGMODE_FINAL_COLOR_PYRAMID)
                 {
@@ -238,10 +289,20 @@ Shader "Hidden/HDRP/DebugFullScreen"
                     // Reuse depth display function from DebugViewMaterial
                     int2 mipOffset = _DebugDepthPyramidOffsets[_DebugDepthPyramidMip];
                     uint2 pixCoord = (uint2)input.positionCS.xy >> _DebugDepthPyramidMip;
-                    float depth = LOAD_TEXTURE2D_X(_DepthPyramidTexture, pixCoord + mipOffset).r;
+                    float depth = LOAD_TEXTURE2D_X(_CameraDepthTexture, pixCoord + mipOffset).r;
                     PositionInputs posInput = GetPositionInput(input.positionCS.xy, _ScreenSize.zw, depth, UNITY_MATRIX_I_VP, UNITY_MATRIX_V);
                     float linearDepth = frac(posInput.linearDepth * 0.1);
                     return float4(linearDepth.xxx, 1.0);
+                }
+                
+                if (_FullScreenDebugMode == FULLSCREENDEBUGMODE_TRANSPARENCY_OVERDRAW)
+                {
+                    float4 color = (float4)0;
+    
+                    float pixelCost = SAMPLE_TEXTURE2D_X(_DebugFullScreenTexture, s_point_clamp_sampler, input.texcoord).r;
+                    if ((pixelCost > 0.001))
+                        color.rgb = HsvToRgb(float3(0.66 * saturate(1.0 - (1.0 / _TransparencyOverdrawMaxPixelCost) * pixelCost), 1.0, 1.0));// 
+                    return color;
                 }
 
                 return float4(0.0, 0.0, 0.0, 0.0);

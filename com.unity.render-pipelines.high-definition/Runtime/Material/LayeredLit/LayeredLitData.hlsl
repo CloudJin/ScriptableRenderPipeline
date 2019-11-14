@@ -397,7 +397,7 @@ void GetLayerTexCoord(FragInputs input, inout LayerTexCoord layerTexCoord)
 #endif
 
     GetLayerTexCoord(   input.texCoord0.xy, input.texCoord1.xy, input.texCoord2.xy, input.texCoord3.xy,
-                        input.positionRWS, input.worldToTangent[2].xyz, layerTexCoord);
+                        input.positionRWS, input.tangentToWorld[2].xyz, layerTexCoord);
 }
 
 void ApplyDisplacementTileScale(inout float height0, inout float height1, inout float height2, inout float height3)
@@ -494,16 +494,8 @@ float4 GetBlendMask(LayerTexCoord layerTexCoord, float4 vertexColor, bool useLod
     // It also means that when using wind, users can't use vertex color to modulate the effect of influence from the main layer.
     float4 maskVertexColor = vertexColor;
 #if defined(_LAYER_MASK_VERTEX_COLOR_MUL)
-    #if defined(_VERTEX_WIND)
-    // For multiplicative vertex color blend mask. 1.0f is the neutral value
-    maskVertexColor.a = 1.0f;
-    #endif
     blendMasks *= maskVertexColor;
 #elif defined(_LAYER_MASK_VERTEX_COLOR_ADD)
-    #if defined(_VERTEX_WIND)
-    // For additive vertex color blend mask. 0.5f is the neutral value (0.5 * 2.0 - 1.0 = 0.0)
-    maskVertexColor.a = 0.5f;
-    #endif
     blendMasks = saturate(blendMasks + maskVertexColor * 2.0 - 1.0);
 #endif
 
@@ -529,11 +521,27 @@ float GetMaxHeight(float4 heights)
     return maxHeight;
 }
 
+float GetMinHeight(float4 heights)
+{
+    float minHeight = min(heights.r, heights.g);
+#ifdef _LAYEREDLIT_4_LAYERS
+    minHeight = min(Min3(heights.r, heights.g, heights.b), heights.a);
+#endif
+#ifdef _LAYEREDLIT_3_LAYERS
+    minHeight = Min3(heights.r, heights.g, heights.b);
+#endif
+
+    return minHeight;
+}
+
 // Returns layering blend mask after application of height based blend.
 float4 ApplyHeightBlend(float4 heights, float4 blendMask)
 {
     // We need to mask out inactive layers so that their height does not impact the result.
-    float4 maskedHeights = heights * blendMask.argb;
+    // First we make every value positive by substracting the minimum value.
+    // Otherwise multiplicating by blendMask can invert negative heights.
+    // For example, 2 heights value of -10.0 and -5 multiplied by blend mask 0.1 and 1.0 (intent is to give LESS importance to the first value) makes the first value heigher
+    float4 maskedHeights = (heights - GetMinHeight(heights)) * blendMask.argb;
 
     float maxHeight = GetMaxHeight(maskedHeights);
     // Make sure that transition is not zero otherwise the next computation will be wrong.
@@ -712,7 +720,7 @@ void GetSurfaceAndBuiltinData(FragInputs input, float3 V, inout PositionInputs p
     surfaceData.perceptualSmoothness = SURFACEDATA_BLEND_SCALAR(surfaceData, perceptualSmoothness, weights);
     surfaceData.ambientOcclusion = SURFACEDATA_BLEND_SCALAR(surfaceData, ambientOcclusion, weights);
     surfaceData.metallic = SURFACEDATA_BLEND_SCALAR(surfaceData, metallic, weights);
-    surfaceData.tangentWS = normalize(input.worldToTangent[0].xyz); // The tangent is not normalize in worldToTangent for mikkt. Tag: SURFACE_GRADIENT
+    surfaceData.tangentWS = normalize(input.tangentToWorld[0].xyz); // The tangent is not normalize in tangentToWorld for mikkt. Tag: SURFACE_GRADIENT
     surfaceData.subsurfaceMask = SURFACEDATA_BLEND_SCALAR(surfaceData, subsurfaceMask, weights);
     surfaceData.thickness = SURFACEDATA_BLEND_SCALAR(surfaceData, thickness, weights);
     surfaceData.diffusionProfileHash = SURFACEDATA_BLEND_DIFFUSION_PROFILE(surfaceData, diffusionProfileHash, weights); // We don't need the hash as we only use it to compute the diffusion profile index
@@ -742,6 +750,20 @@ void GetSurfaceAndBuiltinData(FragInputs input, float3 V, inout PositionInputs p
     surfaceData.transmittanceMask = 0.0;
 
     GetNormalWS(input, normalTS, surfaceData.normalWS, doubleSidedConstants);
+
+    surfaceData.geomNormalWS = input.tangentToWorld[2];
+
+    surfaceData.specularOcclusion = 1.0; // This need to be init here to quiet the compiler in case of decal, but can be override later.
+
+#if HAVE_DECALS
+    if (_EnableDecals)
+    {
+        // Both uses and modifies 'surfaceData.normalWS'.
+        DecalSurfaceData decalSurfaceData = GetDecalSurfaceData(posInput, alpha);
+        ApplyDecalToSurfaceData(decalSurfaceData, surfaceData);
+    }
+#endif
+
     // Use bent normal to sample GI if available
     // If any layer use a bent normal map, then bentNormalTS contain the interpolated result of bentnormal and normalmap (in case no bent normal are available)
     // Note: the code in LitDataInternal ensure that we fallback on normal map for layer that have no bentnormal
@@ -750,8 +772,6 @@ void GetSurfaceAndBuiltinData(FragInputs input, float3 V, inout PositionInputs p
 #else // if no bent normal are available at all just keep the calculation fully
     bentNormalWS = surfaceData.normalWS;
 #endif
-
-    surfaceData.geomNormalWS = input.worldToTangent[2];
 
     // By default we use the ambient occlusion with Tri-ace trick (apply outside) for specular occlusion.
     // If user provide bent normal then we process a better term
@@ -764,21 +784,11 @@ void GetSurfaceAndBuiltinData(FragInputs input, float3 V, inout PositionInputs p
     #endif
 #elif defined(_MASKMAP0) || defined(_MASKMAP1) || defined(_MASKMAP2) || defined(_MASKMAP3)
     surfaceData.specularOcclusion = GetSpecularOcclusionFromAmbientOcclusion(dot(surfaceData.normalWS, V), surfaceData.ambientOcclusion, PerceptualSmoothnessToRoughness(surfaceData.perceptualSmoothness));
-#else
-    surfaceData.specularOcclusion = 1.0;
-#endif
-
-#if HAVE_DECALS
-    if (_EnableDecals)
-    {
-        DecalSurfaceData decalSurfaceData = GetDecalSurfaceData(posInput, alpha);
-        ApplyDecalToSurfaceData(decalSurfaceData, surfaceData);
-    }
 #endif
 
 #ifdef _ENABLE_GEOMETRIC_SPECULAR_AA
     // Specular AA
-    surfaceData.perceptualSmoothness = GeometricNormalFiltering(surfaceData.perceptualSmoothness, input.worldToTangent[2], _SpecularAAScreenSpaceVariance, _SpecularAAThreshold);
+    surfaceData.perceptualSmoothness = GeometricNormalFiltering(surfaceData.perceptualSmoothness, input.tangentToWorld[2], _SpecularAAScreenSpaceVariance, _SpecularAAThreshold);
 #endif
 
 #if defined(DEBUG_DISPLAY)
@@ -790,7 +800,7 @@ void GetSurfaceAndBuiltinData(FragInputs input, float3 V, inout PositionInputs p
 
     // We need to call ApplyDebugToSurfaceData after filling the surfarcedata and before filling builtinData
     // as it can modify attribute use for static lighting
-    ApplyDebugToSurfaceData(input.worldToTangent, surfaceData);
+    ApplyDebugToSurfaceData(input.tangentToWorld, surfaceData);
 #endif
 
     GetBuiltinData(input, V, posInput, surfaceData, alpha, bentNormalWS, depthOffset, builtinData);

@@ -1,16 +1,13 @@
-using System;
-using UnityEngine.Rendering;
+using UnityEngine.Rendering.HighDefinition.Attributes;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
-    public partial class Hair : RenderPipelineMaterial
+    partial class Hair : RenderPipelineMaterial
     {
         [GenerateHLSL(PackingRules.Exact)]
         public enum MaterialFeatureFlags
         {
-            HairKajiyaKay               = 1 << 0,
-            HairSubsurfaceScattering    = 1 << 1,
-            HairTransmission            = 1 << 2
+            HairKajiyaKay = 1 << 0,
         };
 
         //-----------------------------------------------------------------------------
@@ -24,34 +21,33 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             [SurfaceDataAttributes("MaterialFeatures")]
             public uint materialFeatures;
 
+            [MaterialSharedPropertyMapping(MaterialSharedProperty.AmbientOcclusion)]
             [SurfaceDataAttributes("Ambient Occlusion")]
             public float ambientOcclusion;
 
             // Standard
+            [MaterialSharedPropertyMapping(MaterialSharedProperty.Albedo)]
             [SurfaceDataAttributes("Diffuse", false, true)]
             public Vector3 diffuseColor;
             [SurfaceDataAttributes("Specular Occlusion")]
             public float specularOcclusion;
 
+            [MaterialSharedPropertyMapping(MaterialSharedProperty.Normal)]
             [SurfaceDataAttributes(new string[] {"Normal", "Normal View Space"}, true)]
             public Vector3 normalWS;
 
             [SurfaceDataAttributes(new string[] { "Geometric Normal", "Geometric Normal View Space" }, true)]
             public Vector3 geomNormalWS;
 
+            [MaterialSharedPropertyMapping(MaterialSharedProperty.Smoothness)]
             [SurfaceDataAttributes("Smoothness")]
             public float perceptualSmoothness;
 
-            // SSS
-            [SurfaceDataAttributes("Diffusion Profile Hash")]
-            public uint diffusionProfileHash;
-            [SurfaceDataAttributes("Subsurface Mask")]
-            public float subsurfaceMask;
+            [SurfaceDataAttributes("Transmittance")]
+            public Vector3 transmittance;
 
-            // Transmission
-            // + Diffusion Profile
-            [SurfaceDataAttributes("Thickness")]
-            public float thickness;
+            [SurfaceDataAttributes("RimTransmissionIntensity")]
+            public float rimTransmissionIntensity;
 
             // Anisotropic
             [SurfaceDataAttributes("Hair Strand Direction", true)]
@@ -62,6 +58,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             public float secondaryPerceptualSmoothness;
 
             // Specular Color
+            [MaterialSharedPropertyMapping(MaterialSharedProperty.Specular)]
             [SurfaceDataAttributes("Specular Tint", false, true)]
             public Vector3 specularTint;
 
@@ -101,21 +98,12 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
             public float perceptualRoughness;
 
-            // SSS
-            public uint diffusionProfileIndex;
-            public float subsurfaceMask;
-
-            // Transmission
-            // + Diffusion Profile
-            public float thickness;
-            public bool useThickObjectMode; // Read from the diffusion profile
-            public Vector3 transmittance;   // Precomputation of transmittance
+            public Vector3 transmittance;
+            public float   rimTransmissionIntensity;
 
             // Anisotropic
             [SurfaceDataAttributes("", true)]
             public Vector3 hairStrandDirectionWS;
-            public float roughnessT;
-            public float roughnessB;
             public float anisotropy;
 
             // Kajiya kay
@@ -134,7 +122,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
         public Hair() {}
 
-        public override void Build(HDRenderPipelineAsset hdAsset)
+        public override void Build(HDRenderPipelineAsset hdAsset, RenderPipelineResources defaultResources)
         {
             PreIntegratedFGD.instance.Build(PreIntegratedFGD.FGDIndex.FGD_GGXAndDisneyDiffuse);
             LTCAreaLight.instance.Build();

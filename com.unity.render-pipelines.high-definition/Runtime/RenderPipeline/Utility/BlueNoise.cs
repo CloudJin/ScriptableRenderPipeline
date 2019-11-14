@@ -1,7 +1,6 @@
 using UnityEngine.Assertions;
-using UnityEngine.Rendering;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
     // Blue noise texture bank
     public sealed class BlueNoise
@@ -18,12 +17,15 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         Texture2DArray m_TextureArray16L;
         Texture2DArray m_TextureArray16RGB;
 
-        public BlueNoise(HDRenderPipelineAsset asset)
-        {
-            var resources = asset.renderPipelineResources.textures;
+        RenderPipelineResources m_RenderPipelineResources;
 
-            InitTextures(16, TextureFormat.Alpha8, resources.blueNoise16LTex, out m_Textures16L, out m_TextureArray16L);
-            InitTextures(16, TextureFormat.RGB24, resources.blueNoise16RGBTex, out m_Textures16RGB, out m_TextureArray16RGB);
+        static readonly System.Random m_Random = new System.Random();
+
+        public BlueNoise(RenderPipelineResources resources)
+        {
+            m_RenderPipelineResources = resources;
+            InitTextures(16, TextureFormat.Alpha8, resources.textures.blueNoise16LTex, out m_Textures16L, out m_TextureArray16L);
+            InitTextures(16, TextureFormat.RGB24, resources.textures.blueNoise16RGBTex, out m_Textures16RGB, out m_TextureArray16RGB);
         }
 
         public void Cleanup()
@@ -37,12 +39,12 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 
         public Texture2D GetRandom16L()
         {
-            return textures16L[(int)(Random.value * (textures16L.Length - 1))];
+            return textures16L[(int)(m_Random.NextDouble() * (textures16L.Length - 1))];
         }
 
         public Texture2D GetRandom16RGB()
         {
-            return textures16RGB[(int)(Random.value * (textures16RGB.Length - 1))];
+            return textures16RGB[(int)(m_Random.NextDouble() * (textures16RGB.Length - 1))];
         }
 
         static void InitTextures(int size, TextureFormat format, Texture2D[] sourceTextures, out Texture2D[] destination, out Texture2DArray destinationArray)
@@ -71,6 +73,30 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                 destination[i] = noiseTex;
                 Graphics.CopyTexture(noiseTex, 0, 0, destinationArray, i, 0);
             }
+        }
+
+        public void BindDitheredRNGData1SPP(CommandBuffer cmd)
+        {
+            cmd.SetGlobalTexture(HDShaderIDs._OwenScrambledTexture, m_RenderPipelineResources.textures.owenScrambled256Tex);
+            cmd.SetGlobalTexture(HDShaderIDs._ScramblingTileXSPP, m_RenderPipelineResources.textures.scramblingTile1SPP);
+            cmd.SetGlobalTexture(HDShaderIDs._RankingTileXSPP, m_RenderPipelineResources.textures.rankingTile1SPP);
+            cmd.SetGlobalTexture(HDShaderIDs._ScramblingTexture, m_RenderPipelineResources.textures.scramblingTex);
+        }
+
+        public void BindDitheredRNGData8SPP(CommandBuffer cmd)
+        {
+            cmd.SetGlobalTexture(HDShaderIDs._OwenScrambledTexture, m_RenderPipelineResources.textures.owenScrambled256Tex);
+            cmd.SetGlobalTexture(HDShaderIDs._ScramblingTileXSPP, m_RenderPipelineResources.textures.scramblingTile8SPP);
+            cmd.SetGlobalTexture(HDShaderIDs._RankingTileXSPP, m_RenderPipelineResources.textures.rankingTile8SPP);
+            cmd.SetGlobalTexture(HDShaderIDs._ScramblingTexture, m_RenderPipelineResources.textures.scramblingTex);
+        }
+
+        public void BindDitheredRNGData256SPP(CommandBuffer cmd)
+        {
+            cmd.SetGlobalTexture(HDShaderIDs._OwenScrambledTexture, m_RenderPipelineResources.textures.owenScrambled256Tex);
+            cmd.SetGlobalTexture(HDShaderIDs._ScramblingTileXSPP, m_RenderPipelineResources.textures.scramblingTile256SPP);
+            cmd.SetGlobalTexture(HDShaderIDs._RankingTileXSPP, m_RenderPipelineResources.textures.rankingTile256SPP);
+            cmd.SetGlobalTexture(HDShaderIDs._ScramblingTexture, m_RenderPipelineResources.textures.scramblingTex);
         }
     }
 }

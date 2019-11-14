@@ -12,11 +12,11 @@ HDRP uses these two sorting methods together to control the render queue. To cal
 
 The resulting queue is a list of GameObjects that are first sorted by their Material’s **Priority**, then by their individual Mesh Renderer’s **Priority**.
 
-<a name=”SortingByMaterial”></a>
+<a name="SortingByMaterial"></a>
 
 ## Sorting by Material
 
-Materials with a **Transparent Surface Type** have a **Sorting Priority** property that you can use to sort groups of meshes that use different Materials. This property is an integer value clamped between -100 and 100.
+Materials with a **Transparent Surface Type** have a **Sorting Priority** property that you can use to sort groups of Meshes that use different Materials. This property is an integer value clamped between -100 and 100.
 
 ![](Images/RendererAndMaterialPriority1.png)
 
@@ -33,11 +33,11 @@ When the **Sort Priority** of each Material is the same, HDRP treats them with e
 
 ![](Images/RendererAndMaterialPriority3.png)
 
-When the **Sort Priority** properties of different Materials are not the same, HDRP displays Meshes using Materials with a higher priority in front of those using Materials with a lower priority. To achieve this, HDRP draws Meshes using lower priority Materials first and draws Meshes using the higher priority Materials later, on top of the meshes it’s already drawn. In the example, setting the **Sort Priority** of **Sphere 2** to **1** means that HDRP renders **Sphere 1** first, then renders **Sphere 2** (drawing it over **Sphere 1**). This makes **Sphere 2** appear in front of **Sphere 1**, despite **Sphere 1** being closer to the **Camera**.
+When the **Sort Priority** properties of different Materials are not the same, HDRP displays Meshes using Materials with a higher priority in front of those using Materials with a lower priority. To achieve this, HDRP draws Meshes using lower priority Materials first and draws Meshes using the higher priority Materials later, on top of the Meshes it’s already drawn. In the example, setting the **Sort Priority** of **Sphere 2** to **1** means that HDRP renders **Sphere 1** first, then renders **Sphere 2** (drawing it over **Sphere 1**). This makes **Sphere 2** appear in front of **Sphere 1**, despite **Sphere 1** being closer to the **Camera**.
 
 ![](Images/RendererAndMaterialPriority4.png)
 
-<a name=”SortingByRenderer”></a>
+<a name="SortingByRenderer"></a>
 
 ## Sorting by Renderer
 
@@ -64,6 +64,6 @@ When the Renderer **Priority** of each Mesh Renderer is the same, HDRP treats th
 
 ![](Images/RendererAndMaterialPriority7.png)
 
-When the **Renderer Priority** properties of different Mesh Renderers are not the same, HDRP displays Mesh Renderers with a higher priority in front of those with a lower Priority. To achieve this, HDRP draws lower priority meshes first and then draws higher priority meshes on top of the meshes it’s already drawn. In the example, setting the **Renderer Priority** of **Sphere 2** to **1** means that HDRP renders **Sphere 1** first, then renders **Sphere 2** (drawing it over **Sphere 1**). This makes **Sphere 2** appear in front of **Sphere 1** despite **Sphere 1** being closer to the **Camera**.
+When the **Renderer Priority** properties of different Mesh Renderers are not the same, HDRP displays Mesh Renderers with a higher priority in front of those with a lower Priority. To achieve this, HDRP draws lower priority Meshes first and then draws higher priority Meshes on top of the Meshes it’s already drawn. In the example, setting the **Renderer Priority** of **Sphere 2** to **1** means that HDRP renders **Sphere 1** first, then renders **Sphere 2** (drawing it over **Sphere 1**). This makes **Sphere 2** appear in front of **Sphere 1** despite **Sphere 1** being closer to the **Camera**.
 
 ![](Images/RendererAndMaterialPriority8.png)

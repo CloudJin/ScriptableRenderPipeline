@@ -1,7 +1,7 @@
 using System;
 using UnityEngine.Serialization;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
     public partial class HDAdditionalCameraData : IVersionable<HDAdditionalCameraData.Version>
     {
@@ -11,13 +11,16 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             First,
             SeparatePassThrough,
             UpgradingFrameSettingsToStruct,
-            AddAfterPostProcessFrameSetting
+            AddAfterPostProcessFrameSetting,
+            AddFrameSettingSpecularLighting, // Not used anymore
+            AddReflectionSettings,
+            AddCustomPostprocessAndCustomPass,
         }
 
         [SerializeField, FormerlySerializedAs("version")]
         Version m_Version;
 
-        protected static readonly MigrationDescription<Version, HDAdditionalCameraData> k_Migration = MigrationDescription.New(
+        static readonly MigrationDescription<Version, HDAdditionalCameraData> k_Migration = MigrationDescription.New(
             MigrationStep.New(Version.SeparatePassThrough, (HDAdditionalCameraData data) =>
             {
 #pragma warning disable 618 // Type or member is obsolete
@@ -48,11 +51,19 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             MigrationStep.New(Version.AddAfterPostProcessFrameSetting, (HDAdditionalCameraData data) =>
             {
                 FrameSettings.MigrateToAfterPostprocess(ref data.renderingPathCustomFrameSettings);
+            }),
+            MigrationStep.New(Version.AddReflectionSettings, (HDAdditionalCameraData data) =>
+                FrameSettings.MigrateToDefaultReflectionSettings(ref data.renderingPathCustomFrameSettings)
+            ),
+            MigrationStep.New(Version.AddCustomPostprocessAndCustomPass, (HDAdditionalCameraData data) =>
+            {
+                FrameSettings.MigrateToCustomPostprocessAndCustomPass(ref data.renderingPathCustomFrameSettings);
             })
-
         );
 
         Version IVersionable<Version>.version { get => m_Version; set => m_Version = value; }
+
+        void Awake() => k_Migration.Migrate(this);
 
 #pragma warning disable 649 // Field never assigned
         [SerializeField, FormerlySerializedAs("renderingPath"), Obsolete("For Data Migration")]

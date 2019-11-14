@@ -5,8 +5,14 @@ using NUnit.Framework;
 using Unity.Collections;
 using System.Collections.Generic;
 using Unity.Jobs;
+using Unity.TestProtocol;
+using Unity.TestProtocol.Messages;
 using UnityEditor;
-using UnityEngine.SceneManagement;
+using UnityEngine.TestTools.Constraints;
+using Is = UnityEngine.TestTools.Constraints.Is;
+using UnityEngine.Networking.PlayerConnection;
+using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace UnityEngine.TestTools.Graphics
 {
@@ -55,7 +61,10 @@ namespace UnityEngine.TestTools.Graphics
             // This PR adds a dummy rendered frame before doing the real rendering and compare images ( test already has frame delay, but there is no rendering )
             int dummyRenderedFrameCount = 1;
 
-            var rt = RenderTexture.GetTemporary(width, height, 24);
+            RenderTextureDescriptor desc = new RenderTextureDescriptor(width, height, settings.UseHDR ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default, 24);
+            desc.sRGB = QualitySettings.activeColorSpace == ColorSpace.Linear;
+
+            var rt = RenderTexture.GetTemporary(desc);
             Texture2D actual = null;
             try
             {
@@ -68,13 +77,26 @@ namespace UnityEngine.TestTools.Graphics
                         camera.targetTexture = null;
                     }
 
-					// only proceed the test on the last renderered frame
+					// only proceed the test on the last rendered frame
 					if (dummyRenderedFrameCount == i)
 					{
 						actual = new Texture2D(width, height, format, false);
-						RenderTexture.active = rt;
+                        RenderTexture dummy = null;
+
+                        if (settings.UseHDR)
+                        {
+                            desc.colorFormat = RenderTextureFormat.Default;
+                            dummy = RenderTexture.GetTemporary(desc);
+                            UnityEngine.Graphics.Blit(rt, dummy);
+                        }
+                        else
+                            RenderTexture.active = rt;
+
 						actual.ReadPixels(new Rect(0, 0, width, height), 0, 0);
 						RenderTexture.active = null;
+
+                        if (dummy != null)
+                            RenderTexture.ReleaseTemporary(dummy);
 
 						actual.Apply();
 
@@ -100,13 +122,14 @@ namespace UnityEngine.TestTools.Graphics
         public static void AreEqual(Texture2D expected, Texture2D actual, ImageComparisonSettings settings = null)
         {
             if (actual == null)
-                throw new ArgumentNullException("actual");
+                throw new ArgumentNullException(nameof(actual));
 
-#if UNITY_EDITOR
-            var imagesWritten = new HashSet<string>();
             var dirName = Path.Combine("Assets/ActualImages", string.Format("{0}/{1}/{2}", UseGraphicsTestCasesAttribute.ColorSpace, UseGraphicsTestCasesAttribute.Platform, UseGraphicsTestCasesAttribute.GraphicsDevice));
-            Directory.CreateDirectory(dirName);
-#endif
+            var failedImageMessage = new FailedImageMessage
+            {
+                PathName = dirName,
+                ImageName = TestContext.CurrentContext.Test.Name,
+            };
 
             try
             {
@@ -154,43 +177,70 @@ namespace UnityEngine.TestTools.Graphics
                         diffImage.SetPixels32(diffPixelsArray, 0);
                         diffImage.Apply(false);
 
-#if UNITY_EDITOR
-                        if (sDontWriteToLog)
-                        {
-                            var bytes = diffImage.EncodeToPNG();
-                            var path = Path.Combine(dirName, TestContext.CurrentContext.Test.Name + ".diff.png");
-                            File.WriteAllBytes(path, bytes);
-                            imagesWritten.Add(path);
-                        }
-                        else
-#endif
                         TestContext.CurrentContext.Test.Properties.Set("DiffImage", Convert.ToBase64String(diffImage.EncodeToPNG()) );
 
+                        failedImageMessage.DiffImage = diffImage.EncodeToPNG();
+                        failedImageMessage.ExpectedImage = expected.EncodeToPNG();
                         throw;
                     }
                 }
             }
             catch (AssertionException)
             {
+                failedImageMessage.ActualImage = actual.EncodeToPNG();
 #if UNITY_EDITOR
-                if (sDontWriteToLog)
-                {
-                    var bytes = actual.EncodeToPNG();
-                    var path = Path.Combine(dirName, TestContext.CurrentContext.Test.Name + ".png");
-                    File.WriteAllBytes(path, bytes);
-                    imagesWritten.Add(path);
-
-                    AssetDatabase.Refresh();
-
-                    UnityEditor.TestTools.Graphics.Utils.SetupReferenceImageImportSettings(imagesWritten);
-                }
-                else
+                ImageHandler.instance.SaveImage(failedImageMessage);
+#else
+                PlayerConnection.instance.Send(FailedImageMessage.MessageId, failedImageMessage.Serialize());
 #endif
-                    TestContext.CurrentContext.Test.Properties.Set("Image", Convert.ToBase64String(actual.EncodeToPNG()));
-
+                TestContext.CurrentContext.Test.Properties.Set("Image", Convert.ToBase64String(actual.EncodeToPNG()));
                 throw;
             }
         }
+
+        /// <summary>
+        /// Render an image from the given camera and check if it allocated memory while doing so.
+        /// </summary>
+        /// <param name="camera">The camera to render from.</param>
+        /// <param name="width"> width of the image to be rendered</param>
+        /// <param name="height"> height of the image to be rendered</param>
+        public static void AllocatesMemory(Camera camera, int width, int height)
+        {
+            if (camera == null)
+                throw new ArgumentNullException(nameof(camera));
+
+            var rt = RenderTexture.GetTemporary(width, height, 24);
+            try
+            {
+                camera.targetTexture = rt;
+                var gcAllocRecorder = Recorder.Get("GC.Alloc");
+
+                // Render the first frame at this resolution (Alloc are allowed here)
+                camera.Render();
+
+                Profiler.BeginSample("GraphicTests_GC_Alloc_Check");
+                {
+                    gcAllocRecorder.enabled = true;
+                    camera.Render();
+                    gcAllocRecorder.enabled = false;
+                }
+                Profiler.EndSample();
+
+                // Note: Currently there are some allocs between the Camera.Render and the begining of the render pipeline rendering.
+                // Because of that, we can't enable this test.
+                int allocationCountOfRenderPipeline = gcAllocRecorder.sampleBlockCount;
+                
+                if (allocationCountOfRenderPipeline > 0)
+                    throw new Exception($"Memory allocation test failed, {allocationCountOfRenderPipeline} allocations detected. Look for GraphicTests_GC_Alloc_Check in the profiler for more details");
+
+                camera.targetTexture = null;
+            }
+            finally
+            {
+                RenderTexture.ReleaseTemporary(rt);
+            }
+        }
+
 
         struct ComputeDiffJob : IJobParallelFor
         {
@@ -287,32 +337,47 @@ namespace UnityEngine.TestTools.Graphics
             float deltaE = Mathf.Sqrt(Mathf.Pow(v1.x - v2.x, 2f) + Mathf.Pow(c1 - c2, 2f) + deltaH * deltaH);
             return deltaE;
         }
-
-#if UNITY_EDITOR
-        // Hack do disable writing to the XML Log of TestRunner (to avoid editor hanging when tests are run locally)
-        static string s_DontWriteToLogPath = "Library/DontWriteToLog";
-
-        static bool sDontWriteToLog
-        {
-            get
-            {
-                return File.Exists( s_DontWriteToLogPath ) ;
-            }
-        }
-
-        [MenuItem("Tests/XML Logging/Disable")]
-        public static void DisableXMLLogging()
-        {
-            File.WriteAllText( s_DontWriteToLogPath, "" );
-        }
-
-        [MenuItem("Tests/XML Logging/Enable")]
-        public static void EnableXMLLogging()
-        {
-            File.Delete(s_DontWriteToLogPath);
-        }
-
-#endif
-
     }
 }
+
+#if UNITY_EDITOR
+public class ImageHandler : ScriptableSingleton<ImageHandler>
+{
+    public void HandleFailedImageEvent(MessageEventArgs messageEventArgs)
+    {
+        var failedImageMessage = FailedImageMessage.Deserialize(messageEventArgs.data);
+        SaveImage(failedImageMessage);
+    }
+
+    public void SaveImage(FailedImageMessage failedImageMessage)
+    {
+        if (!Directory.Exists(failedImageMessage.PathName))
+        {
+            Directory.CreateDirectory(failedImageMessage.PathName);
+        }
+
+        var actualImagePath = Path.Combine(failedImageMessage.PathName, $"{failedImageMessage.ImageName}.png");
+        File.WriteAllBytes(actualImagePath, failedImageMessage.ActualImage);
+        ReportArtifact(actualImagePath);
+
+        if (failedImageMessage.DiffImage != null)
+        {
+            var diffImagePath = Path.Combine(failedImageMessage.PathName, $"{failedImageMessage.ImageName}.diff.png");
+            File.WriteAllBytes(diffImagePath, failedImageMessage.DiffImage);
+            ReportArtifact(diffImagePath);
+
+            var expectedImagesPath =
+                Path.Combine(failedImageMessage.PathName, $"{failedImageMessage.ImageName}.expected.png");
+            File.WriteAllBytes(expectedImagesPath, failedImageMessage.ExpectedImage);
+            ReportArtifact(expectedImagesPath);
+        }
+    }
+
+    private void ReportArtifact(string artifactPath)
+    {
+        var fullpath = Path.GetFullPath(artifactPath);
+        var message = ArtifactPublishMessage.Create(fullpath);
+        Debug.Log(UnityTestProtocolMessageBuilder.Serialize(message));
+    }
+}
+#endif

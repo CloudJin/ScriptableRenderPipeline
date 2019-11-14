@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine.Assertions;
-using UnityEngine.Rendering;
+using UnityEngine.Experimental.Rendering;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
     /// <summary>
     /// Various utilities to perform rendering with HDRP
@@ -166,15 +166,17 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             Texture target,
             bool forceFlipY = false,
             bool forceInvertBackfaceCulling = false,
-            uint staticFlags = 0
+            uint staticFlags = 0,
+            float referenceFieldOfView = 90
         )
         {
             Render(
                 settings, position, target,
-                out CameraSettings cameraSettings, out CameraPositionSettings cameraPosition,
-                forceFlipY: forceFlipY,
-                forceInvertBackfaceCulling: forceInvertBackfaceCulling,
-                staticFlags: staticFlags
+                out _, out _,
+                forceFlipY,
+                forceInvertBackfaceCulling,
+                staticFlags,
+                referenceFieldOfView
             );
         }
 
@@ -190,13 +192,15 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         public static void GenerateRenderingSettingsFor(
             ProbeSettings settings, ProbeCapturePositionSettings position,
             List<CameraSettings> cameras, List<CameraPositionSettings> cameraPositions,
-            bool forceFlipY = false
+            ulong overrideSceneCullingMask,
+            bool forceFlipY = false, float referenceFieldOfView = 90
         )
         {
             // Copy settings
             ComputeCameraSettingsFromProbeSettings(
                 settings, position,
-                out CameraSettings cameraSettings, out CameraPositionSettings cameraPositionSettings
+                out var cameraSettings, out var cameraPositionSettings, overrideSceneCullingMask,
+                referenceFieldOfView
             );
 
             if (forceFlipY)
@@ -230,18 +234,23 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             ProbeSettings settings,
             ProbeCapturePositionSettings position,
             out CameraSettings cameraSettings,
-            out CameraPositionSettings cameraPositionSettings
+            out CameraPositionSettings cameraPositionSettings,
+            ulong overrideSceneCullingMask,
+            float referenceFieldOfView = 90
         )
         {
             // Copy settings
-            cameraSettings = settings.camera;
+            cameraSettings = settings.cameraSettings;
             cameraPositionSettings = CameraPositionSettings.@default;
 
             // Update settings
             ProbeSettingsUtilities.ApplySettings(
                 ref settings, ref position,
-                ref cameraSettings, ref cameraPositionSettings
+                ref cameraSettings, ref cameraPositionSettings,
+                referenceFieldOfView
             );
+
+            cameraSettings.culling.sceneCullingMaskOverride = overrideSceneCullingMask;
         }
 
         public static void Render(
@@ -252,13 +261,14 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             out CameraPositionSettings cameraPositionSettings,
             bool forceFlipY = false,
             bool forceInvertBackfaceCulling = false,
-            uint staticFlags = 0
+            uint staticFlags = 0,
+            float referenceFieldOfView = 90
         )
         {
             // Copy settings
             ComputeCameraSettingsFromProbeSettings(
                 settings, position,
-                out cameraSettings, out cameraPositionSettings
+                out cameraSettings, out cameraPositionSettings, 0
             );
 
             if (forceFlipY)

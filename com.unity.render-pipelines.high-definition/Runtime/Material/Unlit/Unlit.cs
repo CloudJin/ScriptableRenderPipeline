@@ -1,12 +1,11 @@
-using UnityEngine;
-using System;
+using UnityEngine.Rendering.HighDefinition.Attributes;
 
 //-----------------------------------------------------------------------------
 // structure definition
 //-----------------------------------------------------------------------------
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
-    public class Unlit : RenderPipelineMaterial
+    class Unlit : RenderPipelineMaterial
     {
         //-----------------------------------------------------------------------------
         // SurfaceData
@@ -16,6 +15,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
         [GenerateHLSL(PackingRules.Exact, false, false, true, 300)]
         public struct SurfaceData
         {
+            [MaterialSharedPropertyMapping(MaterialSharedProperty.Albedo)]
             [SurfaceDataAttributes("Color", false, true)]
             public Vector3 color;
         };

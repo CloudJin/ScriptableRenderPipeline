@@ -1,22 +1,23 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
-using UnityEngine.Rendering;
 using System.Linq;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline
+namespace UnityEngine.Rendering.HighDefinition
 {
-    public sealed partial class DiffusionProfileSettings : IVersionable<DiffusionProfileSettings.Version>
+    sealed partial class DiffusionProfileSettings : IVersionable<DiffusionProfileSettings.Version>
     {
         enum Version
         {
             Initial,                // 16 profiles per asset
             DiffusionProfileRework, // one profile per asset
+            // This must stay updated to the latest version
+            Last = DiffusionProfileRework,
         }
-        
+
         [Obsolete("Profiles are obsolete, only one diffusion profile per asset is allowed.")]
         public DiffusionProfile this[int index]
         {
@@ -37,35 +38,37 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
 #if UNITY_EDITOR
                 if (d.profiles == null)
                     return;
-                
+
                 // If the asset importer for the asset we're upgrading is null, it means that the asset
                 // does not exists on the disk and we don't want to upgrade these assets
-                var importer = AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(d));
+                string assetPath = AssetDatabase.GetAssetPath(d);
+                var importer = AssetImporter.GetAtPath(assetPath);
                 if (importer == null)
                     return;
-                
-                var currentHDAsset = GraphicsSettings.renderPipelineAsset as HDRenderPipelineAsset;
+
+                var currentHDAsset = HDRenderPipeline.currentAsset;
                 if (currentHDAsset == null)
                     throw new Exception("Can't upgrade diffusion profile when the HDRenderPipeline asset is not assigned in Graphic Settings");
 
-                var defaultProfile = new DiffusionProfile("");
+                var defaultProfile = new DiffusionProfile(true);
 
                 // Iterate over the diffusion profile settings and generate one new asset for each
                 // diffusion profile which have been modified, and store them into a dictionary to be able to upgrade materials
                 int index = 0;
                 var newProfiles = new Dictionary<int, DiffusionProfileSettings>();
+                string assetName = Path.GetFileNameWithoutExtension(assetPath);
                 foreach (var profile in d.profiles)
                 {
                     if (!profile.Equals(defaultProfile))
                     {
-                        newProfiles[index] = CreateNewDiffusionProfile(d, profile, index);
+                        newProfiles[index] = CreateNewDiffusionProfile(d, assetName, profile, index);
                         // Update the diffusion profile hash is required for assets that are upgraded because it will
                         // be assigned to materials right after the create of the asset so we don't wait for the auto hash update
-                        UnityEditor.Experimental.Rendering.HDPipeline.DiffusionProfileHashTable.UpdateDiffusionProfileHashNow(newProfiles[index]);
+                        UnityEditor.Rendering.HighDefinition.DiffusionProfileHashTable.UpdateDiffusionProfileHashNow(newProfiles[index]);
                     }
                     index++;
                 }
-                
+
                 // We write in the main diffusion profile meta filethe list of created asset so we know where to look
                 // when we upgrade materials inside scenes (from the menu item)
                 SerializableGUIDs toJson;
@@ -116,7 +119,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             UpgradeMaterial(mat, mainProfile, "_DiffusionProfile2", "_DiffusionProfileAsset2", "_DiffusionProfileHash2");
             UpgradeMaterial(mat, mainProfile, "_DiffusionProfile3", "_DiffusionProfileAsset3", "_DiffusionProfileHash3");
         }
-        
+
         [System.Serializable]
         struct SerializableGUIDs
         {
@@ -129,13 +132,17 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             // if the material don't have a diffusion profile
             if (!mat.HasProperty(diffusionProfile) || !mat.HasProperty(diffusionProfileAsset) || !mat.HasProperty(diffusionProfileHash))
                 return;
-            
+
+            // We can't upgrade materials if the diffusion profile is null
+            if (mainProfile == null)
+                return;
+
             // or if it already have been upgraded
             int index = mat.GetInt(diffusionProfile) - 1; // the index in the material is stored with +1 because 0 is none
             if (index < 0)
                 return;
             mat.SetInt(diffusionProfile, -1);
-            
+
             var importer = AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(mainProfile));
             SerializableGUIDs profiles = JsonUtility.FromJson<SerializableGUIDs>(importer.userData);
 
@@ -168,23 +175,25 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
                     stencilRef |= (int)HDRenderPipeline.StencilBitMask.DoesntReceiveSSR;
                 }
 
-                // As we tag both during velocity pass and Gbuffer pass we need a separate state and we need to use the write mask
+                // As we tag both during motion vector pass and Gbuffer pass we need a separate state and we need to use the write mask
                 mat.SetInt("_StencilRef", stencilRef);
                 mat.SetInt("_StencilWriteMask", stencilWriteMask);
-                mat.SetInt("_StencilRefMV", (int)HDRenderPipeline.StencilBitMask.ObjectVelocity);
-                mat.SetInt("_StencilWriteMaskMV", (int)HDRenderPipeline.StencilBitMask.ObjectVelocity);
+                mat.SetInt("_StencilRefMV", (int)HDRenderPipeline.StencilBitMask.ObjectMotionVectors);
+                mat.SetInt("_StencilWriteMaskMV", (int)HDRenderPipeline.StencilBitMask.ObjectMotionVectors);
             }
         }
 
-        static DiffusionProfileSettings CreateNewDiffusionProfile(DiffusionProfileSettings asset, DiffusionProfile profile, int index)
+        static DiffusionProfileSettings CreateNewDiffusionProfile(DiffusionProfileSettings asset, string assetName, DiffusionProfile profile, int index)
         {
             var path = AssetDatabase.GetAssetPath(asset);
-            path = Path.GetDirectoryName(path) + "/" + Path.GetFileNameWithoutExtension(path) + "_" + profile.name + Path.GetExtension(path);
+            path = Path.GetDirectoryName(path) + "/" + assetName + Path.GetExtension(path);
             path = AssetDatabase.GenerateUniqueAssetPath(path);
 
             if (index == 0)
             {
                 asset.profile = profile;
+                profile.Validate();
+                asset.UpdateCache();
                 AssetDatabase.MoveAsset(AssetDatabase.GetAssetPath(asset), path);
                 return asset;
             }
@@ -206,7 +215,8 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline
             {
                 UnityEditor.EditorUtility.SetDirty(this);
                 UnityEditor.AssetDatabase.SaveAssets();
-                UnityEditor.AssetDatabase.Refresh();
+                // Do not refresh the database now because it will force the reimport of all new diffusion profile settings
+                EditorApplication.delayCall += UnityEditor.AssetDatabase.Refresh;
             }
         }
 #endif

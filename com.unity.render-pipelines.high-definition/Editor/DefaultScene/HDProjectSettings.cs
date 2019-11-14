@@ -1,9 +1,8 @@
 using UnityEngine;
 using UnityEditorInternal;
 using System.IO;
-using UnityEngine.Rendering;
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     //As ScriptableSingleton is not usable due to internal FilePathAttribute,
     //copying mechanism here
@@ -25,9 +24,17 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         [SerializeField]
         GameObject m_DefaultScenePrefabSaved;
         [SerializeField]
+        GameObject m_DefaultDXRScenePrefabSaved;
+        [SerializeField]
         string m_ProjectSettingFolderPath = "HDRPDefaultResources";
         [SerializeField]
-        bool m_PopupAtStart = false;
+        bool m_WizardPopupAtStart = false;
+        [SerializeField]
+        int m_WizardActiveTab = 0;
+        [SerializeField]
+        string m_PackageVersionForMaterials = k_PackageFirstTimeVersionForMaterials;
+
+        internal const string k_PackageFirstTimeVersionForMaterials = "NeverSaved";
 
         public static GameObject defaultScenePrefab
         {
@@ -35,6 +42,16 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             set
             {
                 instance.m_DefaultScenePrefabSaved = value;
+                Save();
+            }
+        }
+
+        public static GameObject defaultDXRScenePrefab
+        {
+            get => instance.m_DefaultDXRScenePrefabSaved;
+            set
+            {
+                instance.m_DefaultDXRScenePrefabSaved = value;
                 Save();
             }
         }
@@ -49,12 +66,32 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             }
         }
 
-        public static bool hasStartPopup
+        internal static int wizardActiveTab
         {
-            get => instance.m_PopupAtStart;
+            get => instance.m_WizardActiveTab;
             set
             {
-                instance.m_PopupAtStart = value;
+                instance.m_WizardActiveTab = value;
+                Save();
+            }
+        }
+
+        public static bool wizardIsStartPopup
+        {
+            get => instance.m_WizardPopupAtStart;
+            set
+            {
+                instance.m_WizardPopupAtStart = value;
+                Save();
+            }
+        }
+
+        public static string packageVersionForMaterialUpgrade
+        {
+            get => instance.m_PackageVersionForMaterials;
+            set
+            {
+                instance.m_PackageVersionForMaterials = value;
                 Save();
             }
         }
@@ -66,7 +103,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         {
             s_Instance = this;
         }
-        
+
         static HDProjectSettings CreateOrLoad()
         {
             //try load

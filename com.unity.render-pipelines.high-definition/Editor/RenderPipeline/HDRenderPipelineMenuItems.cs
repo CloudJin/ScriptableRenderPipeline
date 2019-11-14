@@ -1,21 +1,22 @@
 using System;
 using System.IO;
+using System.Reflection;
+using System.Collections.Generic;
 using UnityEditor.Rendering;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering;
-using UnityEngine.Experimental.Rendering.HDPipeline;
+using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.SceneManagement;
 using UnityEditor.SceneManagement;
 using UnityEngine.Rendering;
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     using UnityObject = UnityEngine.Object;
 
-    public class HDRenderPipelineMenuItems
+    class HDRenderPipelineMenuItems
     {
         // Function used only to check performance of data with and without tessellation
-        [MenuItem("Internal/HDRP/Test/Remove tessellation materials (not reversible)")]
+        //[MenuItem("Internal/HDRP/Test/Remove tessellation materials (not reversible)")]
         static void RemoveTessellationMaterials()
         {
             var materials = Resources.FindObjectsOfTypeAll<Material>();
@@ -54,7 +55,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 return;
             }
 
-            var result = renderpipeline.ExportSkyToTexture();
+            var result = renderpipeline.ExportSkyToTexture(Camera.main);
             if (result == null)
                 return;
 
@@ -70,41 +71,136 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             }
         }
 
-        [MenuItem("GameObject/Rendering/Scene Settings", priority = CoreUtils.gameObjectMenuPriority)]
+        [MenuItem("GameObject/Volume/Sky and Fog Volume", priority = CoreUtils.gameObjectMenuPriority)]
         static void CreateSceneSettingsGameObject(MenuCommand menuCommand)
         {
             var parent = menuCommand.context as GameObject;
-            var sceneSettings = CoreEditorUtils.CreateGameObject(parent, "Scene Settings");
-            GameObjectUtility.SetParentAndAlign(sceneSettings, menuCommand.context as GameObject);
-            Undo.RegisterCreatedObjectUndo(sceneSettings, "Create " + sceneSettings.name);
-            Selection.activeObject = sceneSettings;
+            var settings = CoreEditorUtils.CreateGameObject(parent, "Sky and Fog Volume");
+            GameObjectUtility.SetParentAndAlign(settings, menuCommand.context as GameObject);
+            Undo.RegisterCreatedObjectUndo(settings, "Create " + settings.name);
+            Selection.activeObject = settings;
 
-            var profile = VolumeProfileFactory.CreateVolumeProfile(sceneSettings.scene, "Scene Settings");
-            VolumeProfileFactory.CreateVolumeComponent<HDShadowSettings>(profile, true, false);
+            var profile = VolumeProfileFactory.CreateVolumeProfile(settings.scene, "Sky and Fog Settings");
             var visualEnv = VolumeProfileFactory.CreateVolumeComponent<VisualEnvironment>(profile, true, false);
-            visualEnv.skyType.value = SkySettings.GetUniqueID<ProceduralSky>();
-            visualEnv.fogType.value = FogType.Exponential;
-            VolumeProfileFactory.CreateVolumeComponent<ProceduralSky>(profile, true, false);
-            VolumeProfileFactory.CreateVolumeComponent<ExponentialFog>(profile, true, true);
 
-            var volume = sceneSettings.AddComponent<Volume>();
+            visualEnv.skyType.value = SkySettings.GetUniqueID<PhysicallyBasedSky>();
+            visualEnv.skyAmbientMode.overrideState = false;
+            VolumeProfileFactory.CreateVolumeComponent<PhysicallyBasedSky>(profile, false, false);
+            var fog = VolumeProfileFactory.CreateVolumeComponent<Fog>(profile, false, true);
+            fog.enabled.Override(true);
+            fog.enableVolumetricFog.Override(true);
+
+            var volume = settings.AddComponent<Volume>();
             volume.isGlobal = true;
             volume.sharedProfile = profile;
-
-            var staticLightingSky = sceneSettings.AddComponent<StaticLightingSky>();
-            staticLightingSky.profile = volume.sharedProfile;
-            staticLightingSky.staticLightingSkyUniqueID = SkySettings.GetUniqueID<ProceduralSky>();
         }
 
-#if ENABLE_RAYTRACING
-        [MenuItem("GameObject/Rendering/Raytracing Environment", priority = CoreUtils.gameObjectMenuPriority)]
-        static void CreateRaytracingEnvironmentGameObject(MenuCommand menuCommand)
+        [MenuItem("Edit/Render Pipeline/Upgrade Fog Volume Components", priority = CoreUtils.editMenuPriority2)]
+        static void UpgradeFogVolumeComponents(MenuCommand menuCommand)
         {
-            var parent = menuCommand.context as GameObject;
-            var raytracingEnvGameObject = CoreEditorUtils.CreateGameObject(parent, "Raytracing Environment");
-            raytracingEnvGameObject.AddComponent<HDRaytracingEnvironment>();
+            void OverrideCommonParameters(AtmosphericScattering input, Fog output)
+            {
+                if (input.colorMode.overrideState)
+                    output.colorMode.Override(input.colorMode.value);
+                if (input.color.overrideState)
+                    output.color.Override(input.color.value);
+                if (input.maxFogDistance.overrideState)
+                    output.maxFogDistance.Override(input.maxFogDistance.value);
+                if (input.mipFogMaxMip.overrideState)
+                    output.mipFogMaxMip.Override(input.mipFogMaxMip.value);
+                if (input.mipFogNear.overrideState)
+                    output.mipFogNear.Override(input.mipFogNear.value);
+                if (input.mipFogFar.overrideState)
+                    output.mipFogFar.Override(input.mipFogFar.value);
+            }
+
+            Fog CreateFogComponentIfNeeded(VolumeProfile profile)
+            {
+                Fog fogComponent = null;
+                if (!profile.TryGet(out fogComponent))
+                {
+                    fogComponent = VolumeProfileFactory.CreateVolumeComponent<Fog>(profile, false, false);
+                }
+
+                return fogComponent;
+            }
+
+            if (!EditorUtility.DisplayDialog(DialogText.title, "This will upgrade all Volume Profiles containing Exponential or Volumetric Fog components to the new Fog component. " + DialogText.projectBackMessage, DialogText.proceed, DialogText.cancel))
+                return;
+
+            var profilePathList = AssetDatabase.FindAssets("t:VolumeProfile", new string[]{ "Assets" });
+
+            int profileCount = profilePathList.Length;
+            int profileIndex = 0;
+            foreach (string guid in profilePathList)
+            {
+                var assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                profileIndex++;
+                if (EditorUtility.DisplayCancelableProgressBar("Upgrade Fog Volume Components", string.Format("({0} of {1}) {2}", profileIndex, profileCount, assetPath), (float)profileIndex / (float)profileCount))
+                    break;
+
+                VolumeProfile profile = AssetDatabase.LoadAssetAtPath(assetPath, typeof(VolumeProfile)) as VolumeProfile;
+
+                if (profile.TryGet<VisualEnvironment>(out var visualEnv))
+                {
+                    if (visualEnv.fogType.value == FogType.Exponential || visualEnv.fogType.value == FogType.Volumetric)
+                    {
+                        var fog = CreateFogComponentIfNeeded(profile);
+                        fog.enabled.Override(true);
+                    }
+                }
+
+
+                if (profile.TryGet<ExponentialFog>(out var expFog))
+                {
+                    var fog = CreateFogComponentIfNeeded(profile);
+
+                    // We only migrate distance because the height parameters are not compatible.
+                    if (expFog.fogDistance.overrideState)
+                        fog.meanFreePath.Override(expFog.fogDistance.value);
+
+                    OverrideCommonParameters(expFog, fog);
+                    EditorUtility.SetDirty(profile);
+                }
+
+                if (profile.TryGet<VolumetricFog>(out var volFog))
+                {
+                    var fog = CreateFogComponentIfNeeded(profile);
+
+                    fog.enableVolumetricFog.Override(true);
+                    if (volFog.meanFreePath.overrideState)
+                        fog.meanFreePath.Override(volFog.meanFreePath.value);
+                    if (volFog.albedo.overrideState)
+                        fog.albedo.Override(volFog.albedo.value);
+                    if (volFog.baseHeight.overrideState)
+                        fog.baseHeight.Override(volFog.baseHeight.value);
+                    if (volFog.maximumHeight.overrideState)
+                        fog.maximumHeight.Override(volFog.maximumHeight.value);
+                    if (volFog.anisotropy.overrideState)
+                        fog.anisotropy.Override(volFog.anisotropy.value);
+                    if (volFog.globalLightProbeDimmer.overrideState)
+                        fog.globalLightProbeDimmer.Override(volFog.globalLightProbeDimmer.value);
+
+                    OverrideCommonParameters(volFog, fog);
+                    EditorUtility.SetDirty(profile);
+                }
+
+                if (profile.TryGet<VolumetricLightingController>(out var volController))
+                {
+                    var fog = CreateFogComponentIfNeeded(profile);
+                    if (volController.depthExtent.overrideState)
+                        fog.depthExtent.Override(volController.depthExtent.value);
+                    if (volController.sliceDistributionUniformity.overrideState)
+                        fog.sliceDistributionUniformity.Override(volController.sliceDistributionUniformity.value);
+
+                    EditorUtility.SetDirty(profile);
+                }
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            EditorUtility.ClearProgressBar();
         }
-#endif
 
         class DoCreateNewAsset<TAssetType> : ProjectWindowCallback.EndNameEditAction where TAssetType : ScriptableObject
         {
@@ -126,7 +222,42 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             ProjectWindowUtil.StartNameEditingIfProjectWindowExists(0, ScriptableObject.CreateInstance<DoCreateNewAssetDiffusionProfileSettings>(), "New Diffusion Profile.asset", icon, null);
         }
 
-        [MenuItem("Internal/HDRP/Add \"Additional Light-shadow Data\" (if not present)")]
+        [MenuItem("Assets/Create/Shader/HDRP/Custom FullScreen Pass")]
+        static void MenuCreateCustomFullScreenPassShader()
+        {
+            string templatePath = $"{HDUtils.GetHDRenderPipelinePath()}/Editor/RenderPipeline/CustomPass/CustomPassFullScreenShader.template";
+            ProjectWindowUtil.CreateScriptAssetFromTemplateFile(templatePath, "New FullScreen CustomPass.shader");
+        }
+
+        [MenuItem("Assets/Create/Shader/HDRP/Custom Renderers Pass")]
+        static void MenuCreateCustomRenderersPassShader()
+        {
+            string templatePath = $"{HDUtils.GetHDRenderPipelinePath()}/Editor/RenderPipeline/CustomPass/CustomPassRenderersShader.template";
+            ProjectWindowUtil.CreateScriptAssetFromTemplateFile(templatePath, "New Renderers CustomPass.shader");
+        }
+
+        [MenuItem("Assets/Create/Rendering/C# Custom Pass")]
+        static void MenuCreateCustomPassCSharpScript()
+        {
+            string templatePath = $"{HDUtils.GetHDRenderPipelinePath()}/Editor/RenderPipeline/CustomPass/CustomPassCSharpScript.template";
+            ProjectWindowUtil.CreateScriptAssetFromTemplateFile(templatePath, "New Custom Pass.cs");
+        }
+
+        [MenuItem("Assets/Create/Rendering/C# Post Process Volume", priority = CoreUtils.assetCreateMenuPriority3)]
+        static void MenuCreateCSharpPostProcessVolume()
+        {
+            string templatePath = $"{HDUtils.GetHDRenderPipelinePath()}/Editor/PostProcessing/Templates/CustomPostProcessingVolume.template";
+            ProjectWindowUtil.CreateScriptAssetFromTemplateFile(templatePath, "New Post Process Volume.cs");
+        }
+
+        [MenuItem("Assets/Create/Shader/HDRP/Post Process", priority = CoreUtils.assetCreateMenuPriority3)]
+        static void MenuCreatePostProcessShader()
+        {
+            string templatePath = $"{HDUtils.GetHDRenderPipelinePath()}/Editor/PostProcessing/Templates/CustomPostProcessingShader.template";
+            ProjectWindowUtil.CreateScriptAssetFromTemplateFile(templatePath, "New Post Process Shader.shader");
+        }
+
+        //[MenuItem("Internal/HDRP/Add \"Additional Light-shadow Data\" (if not present)")]
         static void AddAdditionalLightData()
         {
             var lights = UnityObject.FindObjectsOfType(typeof(Light)) as Light[];
@@ -134,18 +265,15 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             foreach (var light in lights)
             {
                 // Do not add a component if there already is one.
-                if (light.GetComponent<HDAdditionalLightData>() == null)
-                    light.gameObject.AddComponent<HDAdditionalLightData>();
-
-                if (light.GetComponent<AdditionalShadowData>() == null)
+                if (!light.TryGetComponent<HDAdditionalLightData>(out _))
                 {
-                    AdditionalShadowData shadowData = light.gameObject.AddComponent<AdditionalShadowData>();
-                    HDAdditionalShadowData.InitDefaultHDAdditionalShadowData(shadowData);
+                    var hdLight = light.gameObject.AddComponent<HDAdditionalLightData>();
+                    HDAdditionalLightData.InitDefaultHDAdditionalLightData(hdLight);
                 }
             }
         }
 
-        [MenuItem("Internal/HDRP/Add \"Additional Camera Data\" (if not present)")]
+        //[MenuItem("Internal/HDRP/Add \"Additional Camera Data\" (if not present)")]
         static void AddAdditionalCameraData()
         {
             var cameras = UnityObject.FindObjectsOfType(typeof(Camera)) as Camera[];
@@ -153,13 +281,13 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             foreach (var camera in cameras)
             {
                 // Do not add a component if there already is one.
-                if (camera.GetComponent<HDAdditionalCameraData>() == null)
+                if (!camera.TryGetComponent<HDAdditionalCameraData>(out _))
                     camera.gameObject.AddComponent<HDAdditionalCameraData>();
             }
         }
 
         // This script is a helper for the artists to re-synchronize all layered materials
-        [MenuItem("Internal/HDRP/Synchronize all Layered materials")]
+        //[MenuItem("Internal/HDRP/Synchronize all Layered materials")]
         static void SynchronizeAllLayeredMaterial()
         {
             var materials = Resources.FindObjectsOfTypeAll<Material>();
@@ -219,7 +347,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
             try
             {
-                var scenes = AssetDatabase.FindAssets("t:Scene");
+                var scenes = AssetDatabase.FindAssets("t:Scene", new string[]{ "Assets" });
                 var scale = 1f / Mathf.Max(1, scenes.Length);
                 for (var i = 0; i < scenes.Length; ++i)
                 {
@@ -254,7 +382,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
         static void ResetAllMaterialAssetsKeywords(float progressScale, float progressOffset)
         {
-            var matIds = AssetDatabase.FindAssets("t:Material");
+            var matIds = AssetDatabase.FindAssets("t:Material", new string[]{ "Assets" }); // do not include packages
 
             bool VCSEnabled = (UnityEditor.VersionControl.Provider.enabled && UnityEditor.VersionControl.Provider.isActive);
 
@@ -271,7 +399,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 CoreEditorUtils.CheckOutFile(VCSEnabled, mat);
                 var h = Debug.unityLogger.logHandler;
                 Debug.unityLogger.logHandler = new UnityContextualLogHandler(mat);
-                HDEditorUtils.ResetMaterialKeywords(mat);
+                HDShaderUtils.ResetMaterialKeywords(mat);
                 Debug.unityLogger.logHandler = h;
             }
         }
@@ -293,7 +421,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
                 CoreEditorUtils.CheckOutFile(VCSEnabled, materials[i]);
 
-                if (HDEditorUtils.ResetMaterialKeywords(materials[i]))
+                if (HDShaderUtils.ResetMaterialKeywords(materials[i]))
                 {
                     anyMaterialDirty = true;
                 }

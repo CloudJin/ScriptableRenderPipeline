@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditorInternal;
 using System.Reflection;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering.HDPipeline;
+using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.Rendering;
+using UnityEditor.Experimental.Rendering;
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     static partial class HDProbeUI
     {
@@ -25,9 +27,13 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         internal interface IProbeUISettingsProvider
         {
             ProbeSettingsOverride displayedCaptureSettings { get; }
+            ProbeSettingsOverride displayedAdvancedCaptureSettings { get; }
             ProbeSettingsOverride overrideableCaptureSettings { get; }
-            ProbeSettingsOverride displayedAdvancedSettings { get; }
-            ProbeSettingsOverride overrideableAdvancedSettings { get; }
+            ProbeSettingsOverride overrideableAdvancedCaptureSettings { get; }
+            ProbeSettingsOverride displayedCustomSettings { get; }
+            ProbeSettingsOverride displayedAdvancedCustomSettings { get; }
+            ProbeSettingsOverride overrideableCustomSettings { get; }
+            ProbeSettingsOverride overrideableAdvancedCustomSettings { get; }
             Type customTextureType { get; }
             ToolBar[] toolbars { get; }
             Dictionary<KeyCode, ToolBar> shortcuts { get; }
@@ -57,7 +63,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         static readonly GUIContent[] k_ModeContents = { new GUIContent("Baked"), new GUIContent("Custom"), new GUIContent("Realtime") };
         static readonly int[] k_ModeValues = { (int)ProbeSettings.Mode.Baked, (int)ProbeSettings.Mode.Custom, (int)ProbeSettings.Mode.Realtime };
 
-        protected internal struct Drawer<TProvider>
+        internal struct Drawer<TProvider>
             where TProvider : struct, IProbeUISettingsProvider, InfluenceVolumeUI.IInfluenceUISettingsProvider
         {
             // Toolbar content cache
@@ -93,7 +99,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                     k_ListContent[i] = listContent.ToArray();
                     k_ListModes[i] = listMode.ToArray();
                 }
-                
+
             }
 
             // Tool bars
@@ -138,7 +144,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
                     var targetMode = k_ToolbarMode[toolbar];
                     var mode = EditMode.editMode == targetMode ? EditMode.SceneViewEditMode.None : targetMode;
-                    EditMode.ChangeEditMode(mode, HDEditorUtils.GetBoundsGetter(owner)(), owner);
+                    EditorApplication.delayCall += () => EditMode.ChangeEditMode(mode, HDEditorUtils.GetBoundsGetter(owner)(), owner);
                     evt.Use();
                 }
             }
@@ -159,7 +165,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                     serialized.probeSettings.mode.intValue = (int)ProbeSettings.Mode.Realtime;
                 }
                 else
-                { 
+                {
 #endif
 
                 // Probe Mode
@@ -205,13 +211,33 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 );
             }
 
+            public static void DrawAdvancedCaptureSettings(SerializedHDProbe serialized, Editor owner)
+            {
+                var provider = new TProvider();
+                ProbeSettingsUI.Draw(
+                    serialized.probeSettings, owner,
+                    serialized.probeSettingsOverride,
+                    provider.displayedAdvancedCaptureSettings, provider.overrideableAdvancedCaptureSettings
+                );
+            }
+
             public static void DrawCustomSettings(SerializedHDProbe serialized, Editor owner)
             {
                 var provider = new TProvider();
                 ProbeSettingsUI.Draw(
                     serialized.probeSettings, owner,
                     serialized.probeSettingsOverride,
-                    provider.displayedAdvancedSettings, provider.overrideableAdvancedSettings
+                    provider.displayedCustomSettings, provider.overrideableCustomSettings
+                );
+            }
+
+            public static void DrawAdvancedCustomSettings(SerializedHDProbe serialized, Editor owner)
+            {
+                var provider = new TProvider();
+                ProbeSettingsUI.Draw(
+                    serialized.probeSettings, owner,
+                    serialized.probeSettingsOverride,
+                    provider.displayedAdvancedCustomSettings, provider.overrideableAdvancedCustomSettings
                 );
             }
 
@@ -236,7 +262,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 if (serialized.proxyVolume.objectReferenceValue != null)
                 {
                     var proxy = (ReflectionProxyVolumeComponent)serialized.proxyVolume.objectReferenceValue;
-                    if ((int)proxy.proxyVolume.shape != serialized.probeSettings.influence.shape.enumValueIndex
+                    if (proxy.proxyVolume.shape != serialized.probeSettings.influence.shape.GetEnumValue<ProxyShape>()
                         && proxy.proxyVolume.shape != ProxyShape.Infinite)
                         EditorGUILayout.HelpBox(
                             k_ProxyInfluenceShapeMismatchHelpBoxText,
@@ -316,13 +342,14 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                         }
                     case ProbeSettings.Mode.Baked:
                         {
+#pragma warning disable 618
                             if (UnityEditor.Lightmapping.giWorkflowMode
                                 != UnityEditor.Lightmapping.GIWorkflowMode.OnDemand)
                             {
                                 EditorGUILayout.HelpBox("Baking of this probe is automatic because this probe's type is 'Baked' and the Lighting window is using 'Auto Baking'. The texture created is stored in the GI cache.", MessageType.Info);
                                 break;
                             }
-
+#pragma warning restore 618
                             GUI.enabled = serialized.target.enabled;
 
                             // Bake button in non-continous mode
@@ -339,7 +366,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                                     },
                                     GUILayout.ExpandWidth(true)))
                             {
-                                HDBakedReflectionSystem.BakeProbes(new HDProbe[] { serialized.target });
+                                HDBakedReflectionSystem.BakeProbes(serialized.serializedObject.targetObjects.OfType<HDProbe>().ToArray());
                                 GUIUtility.ExitGUI();
                             }
 
@@ -376,22 +403,22 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
                 if (!string.IsNullOrEmpty(assetPath))
                 {
-                    var target = HDProbeSystem.CreateRenderTargetForMode(
+                    var target = (RenderTexture)HDProbeSystem.CreateRenderTargetForMode(
                         probe, ProbeSettings.Mode.Custom
                     );
-                    HDProbeSystem.Render(
-                        probe, null, target,
-                        out HDProbe.RenderData renderData,
-                        forceFlipY: probe.type == ProbeSettings.ProbeType.ReflectionProbe
+
+
+                    HDBakedReflectionSystem.RenderAndWriteToFile(
+                        probe, assetPath, target, null,
+                        out var cameraSettings, out var cameraPositionSettings
                     );
-                    HDTextureUtilities.WriteTextureFileToDisk(target, assetPath);
                     AssetDatabase.ImportAsset(assetPath);
                     HDBakedReflectionSystem.ImportAssetAt(probe, assetPath);
                     CoreUtils.Destroy(target);
 
                     var assetTarget = AssetDatabase.LoadAssetAtPath<Texture>(assetPath);
                     probe.SetTexture(ProbeSettings.Mode.Custom, assetTarget);
-                    probe.SetRenderData(ProbeSettings.Mode.Custom, renderData);
+                    probe.SetRenderData(ProbeSettings.Mode.Custom, new HDProbe.RenderData(cameraSettings, cameraPositionSettings));
                     EditorUtility.SetDirty(probe);
                 }
             }
@@ -401,7 +428,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         {
             var proxy = serialized.proxyVolume.objectReferenceValue as ReflectionProxyVolumeComponent;
             if (proxy != null
-                && (int)proxy.proxyVolume.shape != serialized.probeSettings.influence.shape.enumValueIndex
+                && proxy.proxyVolume.shape != serialized.probeSettings.influence.shape.GetEnumValue<ProxyShape>()
                 && proxy.proxyVolume.shape != ProxyShape.Infinite)
             {
                 EditorGUILayout.HelpBox(

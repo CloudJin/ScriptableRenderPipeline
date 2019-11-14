@@ -151,17 +151,17 @@ namespace UnityEditor.VFX.UI
             }
         }
     }
-    public class ResizableElement : VisualElement
+    class ResizableElement : VisualElement
     {
-        public ResizableElement() : this("uxml/Resizable")
+        public ResizableElement() : this("Resizable")
         {
             pickingMode = PickingMode.Ignore;
         }
 
         public ResizableElement(string uiFile)
         {
-            var tpl = Resources.Load<VisualTreeAsset>(uiFile);
-            var sheet = Resources.Load<StyleSheet>("Resizable");
+            var tpl = VFXView.LoadUXML(uiFile);
+            var sheet = VFXView.LoadStyleSheet("Resizable");
             styleSheets.Add(sheet);
 
             tpl.CloneTree(this);
@@ -369,16 +369,16 @@ namespace UnityEditor.VFX.UI
 
         public static readonly Vector2 defaultSize = new Vector2(200, 160);
 
-        public StickyNote(Vector2 position) : this("uxml/StickyNote", position)
+        public StickyNote(Vector2 position) : this("StickyNote", position)
         {
-            styleSheets.Add(Resources.Load<StyleSheet>("Selectable"));
-            styleSheets.Add(Resources.Load<StyleSheet>("StickyNote"));
+            styleSheets.Add(VFXView.LoadStyleSheet("Selectable"));
+            styleSheets.Add(VFXView.LoadStyleSheet("StickyNote"));
             RegisterCallback<AttachToPanelEvent>(OnAttachToPanel);
         }
 
         public StickyNote(string uiFile, Vector2 position)
         {
-            var tpl = Resources.Load<VisualTreeAsset>(uiFile);
+            var tpl = VFXView.LoadUXML(uiFile);
 
             tpl.CloneTree(this);
 
@@ -393,7 +393,7 @@ namespace UnityEditor.VFX.UI
             m_TitleField = this.Q<TextField>(name: "title-field");
             if (m_TitleField != null)
             {
-                m_TitleField.visible = false;
+                m_TitleField.style.display = DisplayStyle.None;
                 m_TitleField.Q("unity-text-input").RegisterCallback<BlurEvent>(OnTitleBlur);
                 m_TitleField.RegisterCallback<ChangeEvent<string>>(OnTitleChange);
             }
@@ -405,7 +405,7 @@ namespace UnityEditor.VFX.UI
                 m_ContentsField = m_Contents.Q<TextField>(name: "contents-field");
                 if (m_ContentsField != null)
                 {
-                    m_ContentsField.visible = false;
+                    m_ContentsField.style.display = DisplayStyle.None;
                     m_ContentsField.multiline = true;
                     m_ContentsField.Q("unity-text-input").RegisterCallback<BlurEvent>(OnContentsBlur);
                 }
@@ -523,7 +523,7 @@ namespace UnityEditor.VFX.UI
         {
             //bool changed = m_Title.text != m_TitleField.value;
             title = m_TitleField.value;
-            m_TitleField.visible = false;
+            m_TitleField.style.display = DisplayStyle.None;
 
             m_Title.UnregisterCallback<GeometryChangedEvent>(OnTitleRelayout);
 
@@ -538,7 +538,7 @@ namespace UnityEditor.VFX.UI
         {
             bool changed = m_Contents.text != m_ContentsField.value;
             m_Contents.text = m_ContentsField.value;
-            m_ContentsField.visible = false;
+            m_ContentsField.style.display = DisplayStyle.None;
 
             //Notify change
             if (changed)
@@ -555,10 +555,9 @@ namespace UnityEditor.VFX.UI
         void UpdateTitleFieldRect()
         {
             Rect rect = m_Title.layout;
-            //if( m_Title != m_TitleField.parent)
             m_Title.parent.ChangeCoordinatesTo(m_TitleField.parent, rect);
 
-            m_TitleField.style.left = rect.xMin /* + m_Title.style.marginLeft*/;
+            m_TitleField.style.left = rect.xMin -1;
             m_TitleField.style.right = rect.yMin + m_Title.resolvedStyle.marginTop;
             m_TitleField.style.width = rect.width - m_Title.resolvedStyle.marginLeft - m_Title.resolvedStyle.marginRight;
             m_TitleField.style.height = rect.height - m_Title.resolvedStyle.marginTop - m_Title.resolvedStyle.marginBottom;
@@ -570,7 +569,7 @@ namespace UnityEditor.VFX.UI
             {
                 m_TitleField.RemoveFromClassList("empty");
                 m_TitleField.value = m_Title.text;
-                m_TitleField.visible = true;
+                m_TitleField.style.display = DisplayStyle.Flex;
                 UpdateTitleFieldRect();
                 m_Title.RegisterCallback<GeometryChangedEvent>(OnTitleRelayout);
 
@@ -597,7 +596,7 @@ namespace UnityEditor.VFX.UI
             if (e.clickCount == 2)
             {
                 m_ContentsField.value = m_Contents.text;
-                m_ContentsField.visible = true;
+                m_ContentsField.style.display = DisplayStyle.Flex;
                 m_ContentsField.Q("unity-text-input").Focus();
                 e.StopPropagation();
                 e.PreventDefault();

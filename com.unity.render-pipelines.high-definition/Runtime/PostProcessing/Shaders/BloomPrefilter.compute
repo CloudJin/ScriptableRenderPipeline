@@ -21,7 +21,7 @@ CBUFFER_END
 [numthreads(GROUP_SIZE, GROUP_SIZE, 1)]
 void KMain(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
-    UNITY_STEREO_ASSIGN_COMPUTE_EYE_INDEX(dispatchThreadId.z);
+    UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
     PositionInputs posInputs = GetPositionInput(float2(dispatchThreadId.xy), _TexelSize.zw, uint2(GROUP_SIZE, GROUP_SIZE));
     float2 uv = posInputs.positionNDC;
 
@@ -43,10 +43,10 @@ void KMain(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     // Luma weighted average [Karis13]
     float w0 = 1.0 / (Luminance(color0) + 1.0);
-    float w1 = 1.0 / (Luminance(color0) + 1.0);
-    float w2 = 1.0 / (Luminance(color0) + 1.0);
-    float w3 = 1.0 / (Luminance(color0) + 1.0);
-    float w4 = 1.0 / (Luminance(color0) + 1.0);
+    float w1 = 1.0 / (Luminance(color1) + 1.0);
+    float w2 = 1.0 / (Luminance(color2) + 1.0);
+    float w3 = 1.0 / (Luminance(color3) + 1.0);
+    float w4 = 1.0 / (Luminance(color4) + 1.0);
     float wSum = w0 + w1 + w2 + w3 + w4;
 
     color0 *= w0;

@@ -45,18 +45,28 @@ namespace UnityEditor.ShaderGraph
 
         static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths)
         {
-            MaterialGraphEditWindow[] windows = Resources.FindObjectsOfTypeAll<MaterialGraphEditWindow>();
-            foreach (var matGraphEditWindow in windows)
-            {
-                matGraphEditWindow.updatePreviewShaders = true;
-            }
-
             RegisterShaders(importedAssets);
 
             bool anyShaders = movedAssets.Any(val => val.EndsWith(ShaderGraphImporter.Extension, StringComparison.InvariantCultureIgnoreCase));
             anyShaders |= movedAssets.Any(val => val.EndsWith(ShaderSubGraphImporter.Extension, StringComparison.InvariantCultureIgnoreCase));
             if (anyShaders)
                 UpdateAfterAssetChange(movedAssets);
+            
+            var changedFiles = movedAssets.Union(importedAssets)
+                .Where(x => x.EndsWith(ShaderSubGraphImporter.Extension, StringComparison.InvariantCultureIgnoreCase)
+                || CustomFunctionNode.s_ValidExtensions.Contains(Path.GetExtension(x)))
+                .Select(AssetDatabase.AssetPathToGUID)
+                .Distinct()
+                .ToList();
+
+            if (changedFiles.Count > 0)
+            {
+                var windows = Resources.FindObjectsOfTypeAll<MaterialGraphEditWindow>();
+                foreach (var window in windows)
+                {
+                    window.ReloadSubGraphsOnNextUpdate(changedFiles);
+                }
+            }
         }
     }
 }

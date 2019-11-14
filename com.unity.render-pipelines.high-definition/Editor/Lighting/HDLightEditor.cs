@@ -1,9 +1,11 @@
 using UnityEditor.Rendering;
 using UnityEngine;
-using UnityEngine.Experimental.Rendering;
-using UnityEngine.Experimental.Rendering.HDPipeline;
+using UnityEngine.Rendering.HighDefinition;
+using System;
+using System.Linq.Expressions;
+using System.Reflection;
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     [CanEditMultipleObjects]
     [CustomEditorForRenderPipeline(typeof(Light), typeof(HDRenderPipelineAsset))]
@@ -12,7 +14,22 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         public SerializedHDLight m_SerializedHDLight;
 
         HDAdditionalLightData[] m_AdditionalLightDatas;
-        AdditionalShadowData[] m_AdditionalShadowDatas;
+
+        HDAdditionalLightData targetAdditionalData
+            => m_AdditionalLightDatas[ReferenceTargetIndex(this)];
+
+        static Func<Editor, int> ReferenceTargetIndex;
+
+        static HDLightEditor()
+        {
+            var type = typeof(UnityEditor.Editor);
+            var propertyInfo = type.GetProperty("referenceTargetIndex", BindingFlags.NonPublic | BindingFlags.Instance);
+            var getterMethodInfo = propertyInfo.GetGetMethod(true);
+            var instance = Expression.Parameter(typeof(Editor), "instance");
+            var getterCall = Expression.Call(instance, getterMethodInfo);
+            var lambda = Expression.Lambda<Func<Editor, int>>(getterCall, instance);
+            ReferenceTargetIndex = lambda.Compile();
+        }
 
         protected override void OnEnable()
         {
@@ -20,60 +37,40 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
             // Get & automatically add additional HD data if not present
             m_AdditionalLightDatas = CoreEditorUtils.GetAdditionalData<HDAdditionalLightData>(targets, HDAdditionalLightData.InitDefaultHDAdditionalLightData);
-            m_AdditionalShadowDatas = CoreEditorUtils.GetAdditionalData<AdditionalShadowData>(targets, HDAdditionalShadowData.InitDefaultHDAdditionalShadowData);
-            m_SerializedHDLight = new SerializedHDLight(m_AdditionalLightDatas, m_AdditionalShadowDatas, settings);
+            m_SerializedHDLight = new SerializedHDLight(m_AdditionalLightDatas, settings);
 
             // Update emissive mesh and light intensity when undo/redo
             Undo.undoRedoPerformed += () =>
             {
                 // Serialized object is lossing references after an undo
-                if (m_SerializedHDLight.serializedLightDatas.targetObject != null)
+                if (m_SerializedHDLight.serializedObject.targetObject != null)
                 {
-                    m_SerializedHDLight.serializedLightDatas.ApplyModifiedProperties();
+                    m_SerializedHDLight.serializedObject.ApplyModifiedProperties();
                     foreach (var hdLightData in m_AdditionalLightDatas)
                         if (hdLightData != null)
                             hdLightData.UpdateAreaLightEmissiveMesh();
                 }
             };
-
-            // If the light is disabled in the editor we force the light upgrade from his inspector
-            foreach (var additionalLightData in m_AdditionalLightDatas)
-                additionalLightData.UpgradeLight();
         }
 
         public override void OnInspectorGUI()
         {
             m_SerializedHDLight.Update();
 
-            //add space before the first collapsible area
+            // Add space before the first collapsible area
             EditorGUILayout.Space();
 
-            // Disable the default light editor for the release, it is just use for development
-            /*
-            // Temporary toggle to go back to the old editor & separated additional datas
-            bool useOldInspector = m_AdditionalLightData.useOldInspector.boolValue;
-
-            if (GUILayout.Button("Toggle default light editor"))
-                useOldInspector = !useOldInspector;
-
-            m_AdditionalLightData.useOldInspector.boolValue = useOldInspector;
-
-            if (useOldInspector)
-            {
-                DrawDefaultInspector();
-                ApplyAdditionalComponentsVisibility(false);
-                m_SerializedAdditionalShadowData.ApplyModifiedProperties();
-                m_SerializedAdditionalLightData.ApplyModifiedProperties();
-                return;
-            }
-            */
-
-            // New editor
             ApplyAdditionalComponentsVisibility(true);
 
+            EditorGUI.BeginChangeCheck();
             HDLightUI.Inspector.Draw(m_SerializedHDLight, this);
+            if (EditorGUI.EndChangeCheck())
+            {
+                m_SerializedHDLight.Apply();
 
-            m_SerializedHDLight.Apply();
+                foreach (var hdLightData in m_AdditionalLightDatas)
+                    hdLightData.UpdateAllLightValues();
+            }
 
             if (m_SerializedHDLight.needUpdateAreaLightEmissiveMeshComponents)
                 UpdateAreaLightEmissiveMeshComponents();
@@ -84,28 +81,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             foreach (var hdLightData in m_AdditionalLightDatas)
             {
                 hdLightData.UpdateAreaLightEmissiveMesh();
-
-                MeshRenderer emissiveMeshRenderer = hdLightData.GetComponent<MeshRenderer>();
-                MeshFilter emissiveMeshFilter = hdLightData.GetComponent<MeshFilter>();
-
-                // If the display emissive mesh is disabled, skip to the next selected light
-                if (emissiveMeshFilter == null || emissiveMeshRenderer == null)
-                    continue;
-
-                // We only load the mesh and it's material here, because we can't do that inside HDAdditionalLightData (Editor assembly)
-                // Every other properties of the mesh is updated in HDAdditionalLightData to support timeline and editor records
-                switch (hdLightData.lightTypeExtent)
-                {
-                    case LightTypeExtent.Tube:
-                        emissiveMeshFilter.mesh = HDEditorUtils.LoadAsset<Mesh>("Runtime/RenderPipelineResources/Mesh/Cylinder.fbx");
-                        break;
-                    case LightTypeExtent.Rectangle:
-                    default:
-                        emissiveMeshFilter.mesh = HDEditorUtils.LoadAsset<Mesh>("Runtime/RenderPipelineResources/Mesh/Quad.FBX");
-                        break;
-                }
-                if (emissiveMeshRenderer.sharedMaterial == null)
-                    emissiveMeshRenderer.material = new Material(Shader.Find("HDRP/Unlit"));
+                hdLightData.UpdateEmissiveMeshComponents();
             }
 
             m_SerializedHDLight.needUpdateAreaLightEmissiveMeshComponents = false;
@@ -119,28 +95,22 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             // var flags = hide ? HideFlags.HideInInspector : HideFlags.None;
             var flags = HideFlags.None;
 
-            foreach (var t in m_SerializedHDLight.serializedLightDatas.targetObjects)
+            foreach (var t in m_SerializedHDLight.serializedObject.targetObjects)
                 ((HDAdditionalLightData)t).hideFlags = flags;
-
-            foreach (var t in m_SerializedHDLight.serializedShadowDatas.targetObjects)
-                ((AdditionalShadowData)t).hideFlags = flags;
         }
-        
+
         protected override void OnSceneGUI()
         {
-            m_SerializedHDLight.Update();
+            // Each handles manipulate only one light
+            // Thus do not rely on serialized properties
+            HDLightType lightType = targetAdditionalData.type;
 
-
-            HDAdditionalLightData src = (HDAdditionalLightData)m_SerializedHDLight.serializedLightDatas.targetObject;
-            Light light = (Light)target;
-            if (src.lightTypeExtent == LightTypeExtent.Punctual && (light.type == LightType.Directional || light.type == LightType.Point))
-            {
-                //use legacy handles
+            if (lightType == HDLightType.Directional
+                || lightType == HDLightType.Point
+                || lightType == HDLightType.Area && targetAdditionalData.areaLightShape == AreaLightShape.Disc)
                 base.OnSceneGUI();
-                return;
-            }
-
-            HDLightUI.DrawHandles(m_SerializedHDLight, this);
+            else
+                HDLightUI.DrawHandles(targetAdditionalData, this);
         }
 
         internal Color legacyLightColor

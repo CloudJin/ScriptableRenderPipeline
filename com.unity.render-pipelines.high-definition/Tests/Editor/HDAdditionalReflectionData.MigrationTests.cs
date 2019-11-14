@@ -1,10 +1,10 @@
 using NUnit.Framework;
-using UnityEditor.Experimental.Rendering.TestFramework;
-using UnityEngine.Rendering;
+using UnityEditor.Rendering.TestFramework;
+using System;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline.Tests
+namespace UnityEngine.Rendering.HighDefinition.Tests
 {
-    public partial class HDAdditionalReflectionDataTests
+    partial class HDAdditionalReflectionDataTests
     {
         public class MigrateReflectionProbeFromVersion_ModeAndTextures
         {
@@ -121,16 +121,16 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline.Tests
                     probe.enabled = true;
 
                     var settings = probe.settings;
-                    Assert.AreEqual((HDAdditionalCameraData.ClearColorMode)legacyProbeData.clearColorMode, settings.camera.bufferClearing.clearColorMode);
-                    Assert.AreEqual(legacyProbeData.backgroundColorHDR, settings.camera.bufferClearing.backgroundColorHDR);
-                    Assert.AreEqual(legacyProbeData.clearDepth, settings.camera.bufferClearing.clearDepth);
-                    Assert.AreEqual(legacyProbeData.cullingMask, (int)settings.camera.culling.cullingMask);
-                    Assert.AreEqual(legacyProbeData.useOcclusionCulling, settings.camera.culling.useOcclusionCulling);
-                    Assert.AreEqual(legacyProbeData.volumeLayerMask, (int)settings.camera.volumes.layerMask);
-                    Assert.AreEqual(legacyProbeData.nearClipPlane, settings.camera.frustum.nearClipPlane);
-                    Assert.AreEqual(legacyProbeData.farClipPlane, settings.camera.frustum.farClipPlane);
-                    Assert.AreEqual(legacyProbeData.fieldOfview, settings.camera.frustum.fieldOfView);
-                    Assert.AreEqual(legacyProbeData.renderingPath == (int)LegacyRenderingPath.Custom, settings.camera.customRenderingSettings);
+                    Assert.AreEqual((HDAdditionalCameraData.ClearColorMode)legacyProbeData.clearColorMode, settings.cameraSettings.bufferClearing.clearColorMode);
+                    Assert.AreEqual(legacyProbeData.backgroundColorHDR, settings.cameraSettings.bufferClearing.backgroundColorHDR);
+                    Assert.AreEqual(legacyProbeData.clearDepth, settings.cameraSettings.bufferClearing.clearDepth);
+                    Assert.AreEqual(legacyProbeData.cullingMask, (int)settings.cameraSettings.culling.cullingMask);
+                    Assert.AreEqual(legacyProbeData.useOcclusionCulling, settings.cameraSettings.culling.useOcclusionCulling);
+                    Assert.AreEqual(legacyProbeData.volumeLayerMask, (int)settings.cameraSettings.volumes.layerMask);
+                    Assert.AreEqual(legacyProbeData.nearClipPlane, settings.cameraSettings.frustum.nearClipPlane);
+                    Assert.AreEqual(legacyProbeData.farClipPlane, settings.cameraSettings.frustum.farClipPlane);
+                    Assert.AreEqual(legacyProbeData.fieldOfview, settings.cameraSettings.frustum.fieldOfView);
+                    Assert.AreEqual(legacyProbeData.renderingPath == (int)LegacyRenderingPath.Custom, settings.cameraSettings.customRenderingSettings);
                     Assert.IsTrue((influencePositionWS - probe.transform.position).sqrMagnitude < 0.001f);
                     Assert.IsTrue((capturePositionPS - settings.proxySettings.capturePositionProxySpace).sqrMagnitude < 0.001f);
                     Assert.AreEqual(ProbeSettings.ProbeType.ReflectionProbe, settings.type);
@@ -145,7 +145,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline.Tests
             }
 
             string GeneratePrefabYAML(LegacyProbeData legacyProbeData)
-                => $@"%YAML 1.1
+                => FormattableString.Invariant($@"%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!1 &3102262843427888416
 GameObject:
@@ -224,8 +224,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {{fileID: 11500000, guid: d0ef8dc2c2eabfa4e8cb77be57a837c0, type: 3}}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   m_ProxyVolume: {{fileID: 0}}
   m_InfiniteProjection: 1
   m_InfluenceVolume:
@@ -338,13 +338,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {{fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   isGlobal: 1
   priority: 0
   blendDistance: 0
   weight: 1
-  sharedProfile: {{fileID: 11400000, guid: cc8be05cdf24e1748a0d99d50a681853, type: 2}}";
+  sharedProfile: {{fileID: 11400000, guid: cc8be05cdf24e1748a0d99d50a681853, type: 2}}");
         }
 
         public class MigrateFromLegacyProbe
@@ -476,9 +476,9 @@ MonoBehaviour:
                     Assert.AreEqual(legacyProbeData.intensity, settings.lighting.multiplier);
                     Assert.AreEqual(legacyProbeData.boxSize, settings.influence.boxSize);
                     Assert.AreEqual(legacyProbeData.boxProjection, settings.proxySettings.useInfluenceVolumeAsProxyVolume);
-                    Assert.AreEqual(legacyProbeData.useOcclusionCulling, settings.camera.culling.useOcclusionCulling);
-                    Assert.AreEqual(legacyProbeData.nearClipPlane, settings.camera.frustum.nearClipPlane);
-                    Assert.AreEqual(legacyProbeData.farClipPlane, settings.camera.frustum.farClipPlane);
+                    Assert.AreEqual(legacyProbeData.useOcclusionCulling, settings.cameraSettings.culling.useOcclusionCulling);
+                    Assert.AreEqual(legacyProbeData.nearClipPlane, settings.cameraSettings.frustum.nearClipPlane);
+                    Assert.AreEqual(legacyProbeData.farClipPlane, settings.cameraSettings.frustum.farClipPlane);
                     Assert.AreEqual(ProbeSettings.ProbeType.ReflectionProbe, settings.type);
 
                     var targetMode = ProbeSettings.Mode.Baked;
@@ -509,7 +509,7 @@ MonoBehaviour:
             }
 
             string GeneratePrefabYAML(LegacyProbeData legacyProbeData)
-                => $@"%YAML 1.1
+                => FormattableString.Invariant($@"%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!1 &4579176910221717176
 GameObject:
@@ -575,7 +575,7 @@ ReflectionProbe:
   m_UseOcclusionCulling: {(legacyProbeData.useOcclusionCulling ? 1 : 0)}
   m_Importance: {legacyProbeData.importance}
   m_CustomBakedTexture: {{fileID: 0}}
-";
+");
         }
     }
 }

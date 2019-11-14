@@ -3,9 +3,9 @@
     "references": [
         "Unity.VisualEffectGraph.Runtime",
         "Unity.Timeline",
-        "Unity.RenderPipelines.HighDefinition.Runtime"
+        "Unity.RenderPipelines.HighDefinition.Runtime",
+        "Unity.ShaderGraph.Editor"
     ],
-    "optionalUnityReferences": [],
     "includePlatforms": [
         "Editor"
     ],
@@ -30,6 +30,12 @@
             "name": "com.unity.render-pipelines.high-definition",
             "expression": "1.0.0",
             "define": "VFX_HAS_HDRP"
+        },
+        {
+            "name": "com.unity.render-pipelines.universal",
+            "expression": "1.0.0",
+            "define": "VFX_HAS_UNIVERSAL"
         }
-    ]
+    ],
+    "noEngineReferences": false
 }

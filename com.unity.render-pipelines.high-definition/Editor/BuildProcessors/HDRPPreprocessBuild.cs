@@ -2,9 +2,9 @@ using UnityEngine;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine.Rendering;
-using UnityEngine.Experimental.Rendering.HDPipeline;
+using UnityEngine.Rendering.HighDefinition;
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
     class HDRPPreprocessBuild : IPreprocessBuildWithReport
     {
@@ -18,7 +18,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 if (!Application.isBatchMode)
                 {
                     if (!EditorUtility.DisplayDialog("Build Player",
-                                                    "There is no HDRP Asset provided in GraphicsSettings.\nAre you sure you want to continue ?\n Build time can be extremely long without it.", "Ok", "Cancel"))
+                                                    "There is no HDRP Asset provided in GraphicsSettings.\nAre you sure you want to continue?\n Build time can be extremely long without it.", "Ok", "Cancel"))
                     {
                         throw new BuildFailedException("Stop build on request.");
                     }
@@ -42,7 +42,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 && HDUtils.IsOperatingSystemSupported(SystemInfo.operatingSystem)
                 && HDUtils.AreGraphicsAPIsSupported(report.summary.platform, out unsupportedGraphicDevice))
                 return;
-            
+
             unsupportedGraphicDevice = (unsupportedGraphicDevice == GraphicsDeviceType.Null) ? SystemInfo.graphicsDeviceType : unsupportedGraphicDevice;
             string msg = "The platform " + report.summary.platform.ToString() + " with the graphic API " +  unsupportedGraphicDevice + " is not supported with High Definition Render Pipeline";
 

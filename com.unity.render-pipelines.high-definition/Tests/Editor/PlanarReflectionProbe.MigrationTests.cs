@@ -1,8 +1,8 @@
 using NUnit.Framework;
-using UnityEditor.Experimental.Rendering.TestFramework;
-using UnityEngine.Rendering;
+using UnityEditor.Rendering.TestFramework;
+using System;
 
-namespace UnityEngine.Experimental.Rendering.HDPipeline.Tests
+namespace UnityEngine.Rendering.HighDefinition.Tests
 {
     //duplicate formerly used enum RenderingPath here for migration test
     enum LegacyRenderingPath
@@ -12,7 +12,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline.Tests
         FullscreenPassthrough
     }
 
-    public partial class PlanarReflectionProbeTests
+    partial class PlanarReflectionProbeTests
     {
         public class MigratePlanarProbeFromVersion_ModeAndTextures
         {
@@ -33,7 +33,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline.Tests
                 public float shadowDistance;
                 public Vector3 mirrorPositionWS;
                 public Quaternion mirrorRotationWS;
-                public int captureSettingsOverride;
+                public int captureSettingsOverride = 0;
                 public float influenceYOffset;
             }
 
@@ -129,16 +129,16 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline.Tests
                     probe.enabled = true;
 
                     var settings = probe.settings;
-                    Assert.AreEqual((HDAdditionalCameraData.ClearColorMode)legacyProbeData.clearColorMode, settings.camera.bufferClearing.clearColorMode);
-                    Assert.AreEqual(legacyProbeData.backgroundColorHDR, settings.camera.bufferClearing.backgroundColorHDR);
-                    Assert.AreEqual(legacyProbeData.clearDepth, settings.camera.bufferClearing.clearDepth);
-                    Assert.AreEqual(legacyProbeData.cullingMask, (int)settings.camera.culling.cullingMask);
-                    Assert.AreEqual(legacyProbeData.useOcclusionCulling, settings.camera.culling.useOcclusionCulling);
-                    Assert.AreEqual(legacyProbeData.volumeLayerMask, (int)settings.camera.volumes.layerMask);
-                    Assert.AreEqual(legacyProbeData.nearClipPlane, settings.camera.frustum.nearClipPlane);
-                    Assert.AreEqual(legacyProbeData.farClipPlane, settings.camera.frustum.farClipPlane);
-                    Assert.AreEqual(legacyProbeData.fieldOfview, settings.camera.frustum.fieldOfView);
-                    Assert.AreEqual(legacyProbeData.renderingPath == (int)LegacyRenderingPath.Custom, settings.camera.customRenderingSettings);
+                    Assert.AreEqual((HDAdditionalCameraData.ClearColorMode)legacyProbeData.clearColorMode, settings.cameraSettings.bufferClearing.clearColorMode);
+                    Assert.AreEqual(legacyProbeData.backgroundColorHDR, settings.cameraSettings.bufferClearing.backgroundColorHDR);
+                    Assert.AreEqual(legacyProbeData.clearDepth, settings.cameraSettings.bufferClearing.clearDepth);
+                    Assert.AreEqual(legacyProbeData.cullingMask, (int)settings.cameraSettings.culling.cullingMask);
+                    Assert.AreEqual(legacyProbeData.useOcclusionCulling, settings.cameraSettings.culling.useOcclusionCulling);
+                    Assert.AreEqual(legacyProbeData.volumeLayerMask, (int)settings.cameraSettings.volumes.layerMask);
+                    Assert.AreEqual(legacyProbeData.nearClipPlane, settings.cameraSettings.frustum.nearClipPlane);
+                    Assert.AreEqual(legacyProbeData.farClipPlane, settings.cameraSettings.frustum.farClipPlane);
+                    Assert.AreEqual(legacyProbeData.fieldOfview, settings.cameraSettings.frustum.fieldOfView);
+                    Assert.AreEqual(legacyProbeData.renderingPath == (int)LegacyRenderingPath.Custom, settings.cameraSettings.customRenderingSettings);
                     Assert.IsTrue((influencePositionWS - probe.transform.position).sqrMagnitude < 0.001f);
                     Assert.IsTrue((mirrorPositionPS - settings.proxySettings.mirrorPositionProxySpace).sqrMagnitude < 0.001f);
                     Assert.AreEqual(ProbeSettings.ProbeType.PlanarProbe, settings.type);
@@ -153,7 +153,7 @@ namespace UnityEngine.Experimental.Rendering.HDPipeline.Tests
             }
 
             string GeneratePrefabYAML(LegacyProbeData legacyProbeData)
-                => $@"%YAML 1.1
+                => FormattableString.Invariant($@"%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!1 &6171638715142251291
 GameObject:
@@ -196,8 +196,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {{fileID: 11500000, guid: a4ee7c3a3b205a14a94094d01ff91d6b, type: 3}}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   m_ProxyVolume: {{fileID: 0}}
   m_InfiniteProjection: 1
   m_InfluenceVolume:
@@ -299,7 +299,7 @@ MonoBehaviour:
   m_ObsoleteOverrideFieldOfView: 0
   m_ObsoleteFieldOfViewOverride: 90
   m_ObsoleteCaptureNearPlane: 0.3
-  m_ObsoleteCaptureFarPlane: 1000";
+  m_ObsoleteCaptureFarPlane: 1000");
         }
     }
 }

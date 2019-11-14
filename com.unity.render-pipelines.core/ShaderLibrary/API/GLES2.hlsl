@@ -4,7 +4,6 @@
 
 #define UNITY_UV_STARTS_AT_TOP 0
 #define UNITY_REVERSED_Z 0
-#define UNITY_GATHER_SUPPORTED 0
 #define UNITY_NEAR_CLIP_VALUE (-1.0)
 
 // This value will not go through any matrix projection convertion
@@ -18,14 +17,12 @@
 #define CBUFFER_START(name)
 #define CBUFFER_END
 
-#define PLATFORM_THREAD_GROUP_OPTIMAL_SIZE 0		// cannot infer the optimal compute shader group size (GPU vendor not known).
-
 // flow control attributes
-#define UNITY_BRANCH
-#define UNITY_FLATTEN
-#define UNITY_UNROLL
-#define UNITY_UNROLLX(_x)
-#define UNITY_LOOP
+#define UNITY_BRANCH        [branch]
+#define UNITY_FLATTEN       [flatten]
+#define UNITY_UNROLL        [unroll]
+#define UNITY_UNROLLX(_x)   [unroll(_x)]
+#define UNITY_LOOP          [loop]
 
 #define uint int
 
@@ -122,7 +119,7 @@
 #endif
 
 #define SAMPLE_TEXTURE2D_BIAS(textureName, samplerName, coord2, bias)                       tex2Dbias(textureName, float4(coord2, 0, bias))
-#define SAMPLE_TEXTURE2D_GRAD(textureName, samplerName, coord2, ddx, ddy)                   SAMPLE_TEXTURE2D(textureName, coord2)
+#define SAMPLE_TEXTURE2D_GRAD(textureName, samplerName, coord2, ddx, ddy)                   SAMPLE_TEXTURE2D(textureName, samplerName, coord2)
 #define SAMPLE_TEXTURE2D_ARRAY(textureName, samplerName, coord2, index)                     ERROR_ON_UNSUPPORTED_FUNCTION(SAMPLE_TEXTURE2D_ARRAY)
 #define SAMPLE_TEXTURE2D_ARRAY_LOD(textureName, samplerName, coord2, index, lod)            ERROR_ON_UNSUPPORTED_FUNCTION(SAMPLE_TEXTURE2D_ARRAY_LOD)
 #define SAMPLE_TEXTURE2D_ARRAY_BIAS(textureName, samplerName, coord2, index, bias)          ERROR_ON_UNSUPPORTED_FUNCTION(SAMPLE_TEXTURE2D_ARRAY_BIAS)

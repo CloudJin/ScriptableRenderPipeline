@@ -6,12 +6,12 @@
 void AnyHitMain(inout RayIntersection rayIntersection : SV_RayPayload, AttributeData attributeData : SV_IntersectionAttributes)
 {
 	// The first thing that we should do is grab the intersection vertice
-    IntersectionVertice currentvertex;
-    GetCurrentIntersectionVertice(attributeData, currentvertex);
+    IntersectionVertex currentvertex;
+    GetCurrentIntersectionVertex(attributeData, currentvertex);
 
     // Build the Frag inputs from the intersection vertice
     FragInputs fragInput;
-    BuildFragInputsFromIntersection(currentvertex, rayIntersection, fragInput);
+    BuildFragInputsFromIntersection(currentvertex, rayIntersection.incidentDirection, fragInput);
 
     // Compute the view vector
     float3 viewWS = -rayIntersection.incidentDirection;
@@ -22,7 +22,7 @@ void AnyHitMain(inout RayIntersection rayIntersection : SV_RayPayload, Attribute
 
     PositionInputs posInput;
     posInput.positionWS = fragInput.positionRWS;
-    posInput.positionSS = uint2(0, 0);
+    posInput.positionSS = rayIntersection.pixelCoord;
 
     // Build the surfacedata and builtindata
     SurfaceData surfaceData;
@@ -30,13 +30,13 @@ void AnyHitMain(inout RayIntersection rayIntersection : SV_RayPayload, Attribute
     bool isVisible = GetSurfaceDataFromIntersection(fragInput, viewWS, posInput, currentvertex, rayIntersection.cone, surfaceData, builtinData);
 
     // If this fella is not opaque, then we ignore this hit
-    if(!isVisible)
+    if (!isVisible)
     {
         IgnoreHit();
     }
     else
     {
-        // If this fella is opaque, then we need to stop 
+        // If this fella is opaque, then we need to stop
         rayIntersection.color = float3(0.0, 0.0, 0.0);
         AcceptHitAndEndSearch();
     }

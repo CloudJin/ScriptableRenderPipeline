@@ -29,6 +29,10 @@ CBUFFER_START(UnityTerrain)
 #ifdef DEBUG_DISPLAY
     UNITY_TERRAIN_CB_DEBUG_VARS
 #endif
+#ifdef SCENESELECTIONPASS
+    int _ObjectId;
+    int _PassValue;
+#endif
 CBUFFER_END
 
 #ifdef UNITY_INSTANCING_ENABLED
@@ -51,6 +55,17 @@ float _DistortionBlurScale;
 float _DistortionBlurRemapMin;
 float _DistortionBlurRemapMax;
 
+#ifdef _ALPHATEST_ON
+TEXTURE2D(_TerrainHolesTexture);
+SAMPLER(sampler_TerrainHolesTexture);
+
+void ClipHoles(float2 uv)
+{
+	float hole = SAMPLE_TEXTURE2D(_TerrainHolesTexture, sampler_TerrainHolesTexture, uv).r;
+	DoAlphaTest(hole, 0.5);
+}
+#endif
+
 // Vertex height displacement
 #ifdef HAVE_MESH_MODIFICATION
 
@@ -58,7 +73,19 @@ UNITY_INSTANCING_BUFFER_START(Terrain)
 UNITY_DEFINE_INSTANCED_PROP(float4, _TerrainPatchInstanceData)  // float4(xBase, yBase, skipScale, ~)
 UNITY_INSTANCING_BUFFER_END(Terrain)
 
-AttributesMesh ApplyMeshModification(AttributesMesh input)
+float4 ConstructTerrainTangent(float3 normal, float3 positiveZ)
+{
+    // Consider a flat terrain. It should have tangent be (1, 0, 0) and bitangent be (0, 0, 1) as the UV of the terrain grid mesh is a scale of the world XZ position.
+    // In CreateTangentToWorld function (in SpaceTransform.hlsl), it is cross(normal, tangent) * sgn for the bitangent vector.
+    // It is not true in a left-handed coordinate system for the terrain bitangent, if we provide 1 as the tangent.w. It would produce (0, 0, -1) instead of (0, 0, 1).
+    // Also terrain's tangent calculation was wrong in a left handed system because cross((0,0,1), terrainNormalOS) points to the wrong direction as negative X.
+    // Therefore all the 4 xyzw components of the tangent needs to be flipped to correct the tangent frame.
+    // (See TerrainLitData.hlsl - GetSurfaceAndBuiltinData)
+    float3 tangent = cross(normal, positiveZ);
+    return float4(tangent, -1);
+}
+
+AttributesMesh ApplyMeshModification(AttributesMesh input, float3 timeParameters)
 {
 #ifdef UNITY_INSTANCING_ENABLED
     float2 patchVertex = input.positionOS.xy;
@@ -84,14 +111,7 @@ AttributesMesh ApplyMeshModification(AttributesMesh input)
 #endif
 
 #ifdef ATTRIBUTES_NEED_TANGENT
-    // Consider a flat terrain. It should have tangent be (1, 0, 0) and bitangent be (0, 0, 1) as the UV of the terrain grid mesh is a scale of the world XZ position.
-    // In CreateWorldToTangent function (in SpaceTransform.hlsl), it is cross(normal, tangent) * sgn for the bitangent vector.
-    // It is not true in a left-handed coordinate system for the terrain bitangent, if we provide 1 as the tangent.w. It would produce (0, 0, -1) instead of (0, 0, 1).
-    // Also terrain's tangent calculation was wrong in a left handed system because cross((0,0,1), terrainNormalOS) points to the wrong direction as negative X.
-    // Therefore all the 4 xyzw components of the tangent needs to be flipped to correct the tangent frame.
-    // (See TerrainLitData.hlsl - GetSurfaceAndBuiltinData)
-    input.tangentOS.xyz = cross(input.normalOS, float3(0, 0, 1));
-    input.tangentOS.w = -1;
+    input.tangentOS = ConstructTerrainTangent(input.normalOS, float3(0, 0, 1));
 #endif
     return input;
 }
@@ -109,40 +129,71 @@ AttributesMesh ApplyMeshModification(AttributesMesh input)
 
 #include "Packages/com.unity.render-pipelines.high-definition/Runtime/Material/Decal/DecalUtilities.hlsl"
 #include "Packages/com.unity.render-pipelines.high-definition/Runtime/Material/Lit/LitDecalData.hlsl"
+#include "Packages/com.unity.render-pipelines.high-definition/Runtime/Material/TerrainLit/TerrainLitSurfaceData.hlsl"
 
-void TerrainLitShade(float2 uv, float3 tangentWS, float3 bitangentWS, out float3 outAlbedo, out float3 outNormalTS, out float outSmoothness, out float outMetallic, out float outAO);
+void TerrainLitShade(float2 uv, inout TerrainLitSurfaceData surfaceData);
 void TerrainLitDebug(float2 uv, inout float3 baseColor);
+
+float3 ConvertToNormalTS(float3 normalData, float3 tangentWS, float3 bitangentWS)
+{
+#ifdef _NORMALMAP
+    #ifdef SURFACE_GRADIENT
+        return SurfaceGradientFromTBN(normalData.xy, tangentWS, bitangentWS);
+    #else
+        return normalData;
+    #endif
+#else
+    #ifdef SURFACE_GRADIENT
+        return float3(0.0, 0.0, 0.0); // No gradient
+    #else
+        return float3(0.0, 0.0, 1.0);
+    #endif
+#endif
+}
 
 void GetSurfaceAndBuiltinData(inout FragInputs input, float3 V, inout PositionInputs posInput, out SurfaceData surfaceData, out BuiltinData builtinData)
 {
 #ifdef ENABLE_TERRAIN_PERPIXEL_NORMAL
-    {
-        // Consider a flat terrain.It should have tangent be(1, 0, 0) and bitangent be(0, 0, 1) as the UV of the terrain grid mesh is a scale of the world XZ position.
-        // In CreateWorldToTangent function(in SpaceTransform.hlsl), it is cross(normal, tangent) * sgn for the bitangent vector.
-        // It is not true in a left - handed coordinate system for the terrain bitangent, if we provide 1 as the tangent.w.It would produce(0, 0, -1) instead of(0, 0, 1).
-        // Also terrain's tangent calculation was wrong in a left handed system because I used `cross((0,0,1), terrainNormalOS)`. It points to the wrong direction as negative X.
-        // Therefore all the 4 xyzw components of the tangent needs to be flipped to correct the tangent frame.
-        // (See ApplyMeshModification in TerrainLitDataMeshModification.hlsl)
-        float3 normalOS = SAMPLE_TEXTURE2D(_TerrainNormalmapTexture, sampler_TerrainNormalmapTexture, (input.texCoord0.xy + 0.5f) * _TerrainHeightmapRecipSize.xy).rgb * 2 - 1;
-        float3 normalWS = mul((float3x3)GetObjectToWorldMatrix(), normalOS);
-        float4 tangentWS;
-        tangentWS.xyz = cross(normalWS, GetObjectToWorldMatrix()._13_23_33);
-        tangentWS.w = -1;
-
-        input.worldToTangent = BuildWorldToTangent(tangentWS, normalWS);
-
-        input.texCoord0.xy *= _TerrainHeightmapRecipSize.zw;
-    }
+    float2 terrainNormalMapUV = (input.texCoord0.xy + 0.5f) * _TerrainHeightmapRecipSize.xy;
+    input.texCoord0.xy *= _TerrainHeightmapRecipSize.zw;
 #endif
+
+#ifdef _ALPHATEST_ON
+	ClipHoles(input.texCoord0);
+#endif	
 
     // terrain lightmap uvs are always taken from uv0
     input.texCoord1 = input.texCoord2 = input.texCoord0;
 
-    float3 normalTS;
-    TerrainLitShade(input.texCoord0.xy, input.worldToTangent[0], input.worldToTangent[1],
-        surfaceData.baseColor, normalTS, surfaceData.perceptualSmoothness, surfaceData.metallic, surfaceData.ambientOcclusion);
+    TerrainLitSurfaceData terrainLitSurfaceData;
+    InitializeTerrainLitSurfaceData(terrainLitSurfaceData);
+    TerrainLitShade(input.texCoord0.xy, terrainLitSurfaceData);
 
-    surfaceData.tangentWS = normalize(input.worldToTangent[0].xyz); // The tangent is not normalize in worldToTangent for mikkt. Tag: SURFACE_GRADIENT
+#ifdef ENABLE_TERRAIN_PERPIXEL_NORMAL
+    #ifdef TERRAIN_PERPIXEL_NORMAL_OVERRIDE
+        float3 normalWS = terrainLitSurfaceData.normalData.xyz; // normalData directly contains normal in world space.
+        surfaceData.normalWS = normalWS;
+    #else
+        float3 normalOS = SAMPLE_TEXTURE2D(_TerrainNormalmapTexture, sampler_TerrainNormalmapTexture, terrainNormalMapUV).rgb * 2 - 1;
+        float3 normalWS = mul((float3x3)GetObjectToWorldMatrix(), normalOS);
+    #endif
+    float4 tangentWS = ConstructTerrainTangent(normalWS, GetObjectToWorldMatrix()._13_23_33);
+    input.tangentToWorld = BuildTangentToWorld(tangentWS, normalWS);
+#endif
+    surfaceData.tangentWS = normalize(input.tangentToWorld[0].xyz); // The tangent is not normalize in tangentToWorld for mikkt. Tag: SURFACE_GRADIENT
+
+#if !defined(ENABLE_TERRAIN_PERPIXEL_NORMAL) || !defined(TERRAIN_PERPIXEL_NORMAL_OVERRIDE)
+    float3 normalTS = ConvertToNormalTS(terrainLitSurfaceData.normalData, input.tangentToWorld[0], input.tangentToWorld[1]);
+    GetNormalWS(input, normalTS, surfaceData.normalWS, float3(1.0, 1.0, 1.0));
+#endif
+
+    surfaceData.geomNormalWS = input.tangentToWorld[2];
+
+    surfaceData.baseColor = terrainLitSurfaceData.albedo;
+    surfaceData.perceptualSmoothness = terrainLitSurfaceData.smoothness;
+    surfaceData.metallic = terrainLitSurfaceData.metallic;
+    surfaceData.ambientOcclusion = terrainLitSurfaceData.ao;
+
     surfaceData.subsurfaceMask = 0;
     surfaceData.thickness = 1;
     surfaceData.diffusionProfileHash = 0;
@@ -163,26 +214,23 @@ void GetSurfaceAndBuiltinData(inout FragInputs input, float3 V, inout PositionIn
     surfaceData.atDistance = 1000000.0;
     surfaceData.transmittanceMask = 0.0;
 
-    GetNormalWS(input, normalTS, surfaceData.normalWS, float3(1.0, 1.0, 1.0));
+    surfaceData.specularOcclusion = 1.0; // This need to be init here to quiet the compiler in case of decal, but can be override later.
 
-    surfaceData.geomNormalWS = input.worldToTangent[2];
+#if HAVE_DECALS
+    if (_EnableDecals)
+    {
+        float alpha = 1.0; // unused
+                           // Both uses and modifies 'surfaceData.normalWS'.
+        DecalSurfaceData decalSurfaceData = GetDecalSurfaceData(posInput, alpha);
+        ApplyDecalToSurfaceData(decalSurfaceData, surfaceData);
+    }
+#endif
 
     float3 bentNormalWS = surfaceData.normalWS;
 
     // By default we use the ambient occlusion with Tri-ace trick (apply outside) for specular occlusion.
 #ifdef _MASKMAP
     surfaceData.specularOcclusion = GetSpecularOcclusionFromAmbientOcclusion(ClampNdotV(dot(surfaceData.normalWS, V)), surfaceData.ambientOcclusion, PerceptualSmoothnessToRoughness(surfaceData.perceptualSmoothness));
-#else
-    surfaceData.specularOcclusion = 1.0;
-#endif
-
-#if HAVE_DECALS
-    if (_EnableDecals)
-    {
-        float alpha = 1.0; // unused
-        DecalSurfaceData decalSurfaceData = GetDecalSurfaceData(posInput, alpha);
-        ApplyDecalToSurfaceData(decalSurfaceData, surfaceData);
-    }
 #endif
 
 #ifdef DEBUG_DISPLAY
@@ -191,6 +239,9 @@ void GetSurfaceAndBuiltinData(inout FragInputs input, float3 V, inout PositionIn
         TerrainLitDebug(input.texCoord0.xy, surfaceData.baseColor);
         surfaceData.metallic = 0;
     }
+    // We need to call ApplyDebugToSurfaceData after filling the surfarcedata and before filling builtinData
+    // as it can modify attribute use for static lighting
+    ApplyDebugToSurfaceData(input.tangentToWorld, surfaceData);
 #endif
 
     GetBuiltinData(input, V, posInput, surfaceData, 1, bentNormalWS, 0, builtinData);

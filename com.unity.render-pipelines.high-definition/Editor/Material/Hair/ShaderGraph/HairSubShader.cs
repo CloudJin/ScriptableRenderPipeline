@@ -1,11 +1,12 @@
 using System.Collections.Generic;
-using UnityEditor.Graphing;
 using UnityEditor.ShaderGraph;
-using UnityEngine.Experimental.Rendering.HDPipeline;
+using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.Rendering;
+using Data.Util;
 
-namespace UnityEditor.Experimental.Rendering.HDPipeline
+namespace UnityEditor.Rendering.HighDefinition
 {
+    [FormerName("UnityEditor.Experimental.Rendering.HDPipeline.HairSubShader")]
     class HairSubShader : IHairSubShader
     {
         Pass m_PassMETA = new Pass()
@@ -36,9 +37,8 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 HairMasterNode.SpecularOcclusionSlotId,
                 HairMasterNode.BentNormalSlotId,
                 HairMasterNode.HairStrandDirectionSlotId,
-                HairMasterNode.SubsurfaceMaskSlotId,
-                HairMasterNode.ThicknessSlotId,
-                HairMasterNode.DiffusionProfileHashSlotId,
+                HairMasterNode.TransmittanceSlotId,
+                HairMasterNode.RimTransmissionIntensitySlotId,
                 HairMasterNode.SmoothnessSlotId,
                 HairMasterNode.AmbientOcclusionSlotId,
                 HairMasterNode.EmissionSlotId,
@@ -69,10 +69,8 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             BlendOverride = "Blend One Zero",
             ZWriteOverride = "ZWrite On",
             ColorMaskOverride = "ColorMask 0",
-            ExtraDefines = new List<string>()
-            {
-                "#define USE_LEGACY_UNITY_MATRIX_VARIABLES",
-            },
+            ZClipOverride = HDSubShaderUtilities.zClipShadowCaster,
+            CullOverride = HDSubShaderUtilities.defaultCullMode,
             Includes = new List<string>()
             {
                 "#include \"Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/ShaderPass/ShaderPassDepthOnly.hlsl\"",
@@ -82,10 +80,13 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 HairMasterNode.AlphaSlotId,
                 HairMasterNode.AlphaClipThresholdSlotId,
                 HairMasterNode.AlphaClipThresholdShadowSlotId,
+                HairMasterNode.DepthOffsetSlotId,
             },
             VertexShaderSlots = new List<int>()
             {
-                HairMasterNode.PositionSlotId
+                HairMasterNode.PositionSlotId,
+                HairMasterNode.VertexNormalSlotId,
+                HairMasterNode.VertexTangentSlotId
             },
             UseInPreview = false
         };
@@ -101,6 +102,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             ExtraDefines = new List<string>()
             {
                 "#define SCENESELECTIONPASS",
+                "#pragma editor_sync_compilation",
             },
             Includes = new List<string>()
             {
@@ -109,13 +111,16 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             PixelShaderSlots = new List<int>()
             {
                 HairMasterNode.AlphaSlotId,
-                HairMasterNode.AlphaClipThresholdSlotId
+                HairMasterNode.AlphaClipThresholdSlotId,
+                HairMasterNode.DepthOffsetSlotId,
             },
             VertexShaderSlots = new List<int>()
             {
-                HairMasterNode.PositionSlotId
+                HairMasterNode.PositionSlotId,
+                HairMasterNode.VertexNormalSlotId,
+                HairMasterNode.VertexTangentSlotId
             },
-            UseInPreview = true
+            UseInPreview = false
         };
 
         Pass m_PassDepthForwardOnly = new Pass()
@@ -126,6 +131,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             MaterialName = "Hair",
             ShaderPassName = "SHADERPASS_DEPTH_ONLY",
             ZWriteOverride = "ZWrite On",
+            CullOverride = HDSubShaderUtilities.defaultCullMode,
 
             ExtraDefines = HDSubShaderUtilities.s_ExtraDefinesForwardMaterialDepthOrMotion,
 
@@ -138,7 +144,8 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 HairMasterNode.NormalSlotId,
                 HairMasterNode.SmoothnessSlotId,
                 HairMasterNode.AlphaSlotId,
-                HairMasterNode.AlphaClipThresholdSlotId
+                HairMasterNode.AlphaClipThresholdSlotId,
+                HairMasterNode.DepthOffsetSlotId,
             },
 
             RequiredFields = new List<string>()
@@ -151,7 +158,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 "AttributesMesh.uv2",           // SHADERPASS_LIGHT_TRANSPORT always uses uv2
                 "AttributesMesh.uv3",           // DEBUG_DISPLAY
 
-                "FragInputs.worldToTangent",
+                "FragInputs.tangentToWorld",
                 "FragInputs.positionRWS",
                 "FragInputs.texCoord0",
                 "FragInputs.texCoord1",
@@ -162,14 +169,16 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
             VertexShaderSlots = new List<int>()
             {
-                HairMasterNode.PositionSlotId
+                HairMasterNode.PositionSlotId,
+                HairMasterNode.VertexNormalSlotId,
+                HairMasterNode.VertexTangentSlotId
             },
-            UseInPreview = false,
+            UseInPreview = true,
 
             OnGeneratePassImpl = (IMasterNode node, ref Pass pass) =>
             {
                 var masterNode = node as HairMasterNode;
-                HDSubShaderUtilities.GetStencilStateForDepthOrMV(masterNode.receiveDecals.isOn, masterNode.receiveSSR.isOn, false, ref pass);
+                HDSubShaderUtilities.SetStencilStateForDepth(ref pass);
             }
         };
 
@@ -179,11 +188,11 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             LightMode = "MotionVectors",
             TemplateName = "HairPass.template",
             MaterialName = "Hair",
-            ShaderPassName = "SHADERPASS_VELOCITY",
+            ShaderPassName = "SHADERPASS_MOTION_VECTORS",
             ExtraDefines = HDSubShaderUtilities.s_ExtraDefinesForwardMaterialDepthOrMotion,
             Includes = new List<string>()
             {
-                "#include \"Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/ShaderPass/ShaderPassVelocity.hlsl\"",
+                "#include \"Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/ShaderPass/ShaderPassMotionVectors.hlsl\"",
             },
             RequiredFields = new List<string>()
             {
@@ -195,7 +204,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 "AttributesMesh.uv2",           // SHADERPASS_LIGHT_TRANSPORT always uses uv2
                 "AttributesMesh.uv3",           // DEBUG_DISPLAY
 
-                "FragInputs.worldToTangent",
+                "FragInputs.tangentToWorld",
                 "FragInputs.positionRWS",
                 "FragInputs.texCoord0",
                 "FragInputs.texCoord1",
@@ -208,18 +217,21 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 HairMasterNode.NormalSlotId,
                 HairMasterNode.SmoothnessSlotId,
                 HairMasterNode.AlphaSlotId,
-                HairMasterNode.AlphaClipThresholdSlotId
+                HairMasterNode.AlphaClipThresholdSlotId,
+                HairMasterNode.DepthOffsetSlotId,
             },
             VertexShaderSlots = new List<int>()
             {
-                HairMasterNode.PositionSlotId
+                HairMasterNode.PositionSlotId,
+                HairMasterNode.VertexNormalSlotId,
+                HairMasterNode.VertexTangentSlotId
             },
             UseInPreview = false,
 
             OnGeneratePassImpl = (IMasterNode node, ref Pass pass) =>
             {
                 var masterNode = node as HairMasterNode;
-                HDSubShaderUtilities.GetStencilStateForDepthOrMV(masterNode.receiveDecals.isOn, masterNode.receiveSSR.isOn, true, ref pass);
+                HDSubShaderUtilities.SetStencilStateForMotionVector(ref pass);
             }
         };
 
@@ -233,6 +245,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             BlendOverride = "Blend One Zero",
             ZWriteOverride = "ZWrite On",
             ColorMaskOverride = "ColorMask 0",
+            CullOverride = HDSubShaderUtilities.defaultCullMode,
             ExtraDefines = new List<string>()
             {
                 "#define CUTOFF_TRANSPARENT_DEPTH_PREPASS",
@@ -245,10 +258,13 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             {
                 HairMasterNode.AlphaSlotId,
                 HairMasterNode.AlphaClipThresholdDepthPrepassSlotId,
+                HairMasterNode.DepthOffsetSlotId,
             },
             VertexShaderSlots = new List<int>()
             {
-                HairMasterNode.PositionSlotId
+                HairMasterNode.PositionSlotId,
+                HairMasterNode.VertexNormalSlotId,
+                HairMasterNode.VertexTangentSlotId
             },
             UseInPreview = true
         };
@@ -263,13 +279,15 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             CullOverride = "Cull Front",
             ColorMaskOverride = "ColorMask [_ColorMaskTransparentVel] 1",
             ExtraDefines = HDSubShaderUtilities.s_ExtraDefinesForwardTransparent,
+            ZTestOverride = HDSubShaderUtilities.zTestTransparent,
+            ZWriteOverride = HDSubShaderUtilities.ZWriteDefault,
             Includes = new List<string>()
             {
                 "#include \"Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/ShaderPass/ShaderPassForward.hlsl\"",
             },
             RequiredFields = new List<string>()
             {
-                "FragInputs.worldToTangent",
+                "FragInputs.tangentToWorld",
                 "FragInputs.positionRWS",
                 "FragInputs.texCoord1",
                 "FragInputs.texCoord2"
@@ -281,9 +299,8 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 HairMasterNode.SpecularOcclusionSlotId,
                 HairMasterNode.BentNormalSlotId,
                 HairMasterNode.HairStrandDirectionSlotId,
-                HairMasterNode.SubsurfaceMaskSlotId,
-                HairMasterNode.ThicknessSlotId,
-                HairMasterNode.DiffusionProfileHashSlotId,
+                HairMasterNode.TransmittanceSlotId,
+                HairMasterNode.RimTransmissionIntensitySlotId,
                 HairMasterNode.SmoothnessSlotId,
                 HairMasterNode.AmbientOcclusionSlotId,
                 HairMasterNode.EmissionSlotId,
@@ -296,12 +313,19 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 HairMasterNode.SecondarySpecularTintSlotId,
                 HairMasterNode.SecondarySmoothnessSlotId,
                 HairMasterNode.SecondarySpecularShiftSlotId,
+                HairMasterNode.DepthOffsetSlotId,
             },
             VertexShaderSlots = new List<int>()
             {
-                HairMasterNode.PositionSlotId
+                HairMasterNode.PositionSlotId,
+                HairMasterNode.VertexNormalSlotId,
+                HairMasterNode.VertexTangentSlotId
             },
-            UseInPreview = true
+            UseInPreview = true,
+            OnGeneratePassImpl = (IMasterNode node, ref Pass pass) =>
+            {
+                HDSubShaderUtilities.SetBlendModeForTransparentBackface(ref pass);
+            }
         };
 
         Pass m_PassForwardOnly = new Pass()
@@ -311,6 +335,9 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             TemplateName = "HairPass.template",
             MaterialName = "Hair",
             ShaderPassName = "SHADERPASS_FORWARD",
+            CullOverride = HDSubShaderUtilities.cullModeForward,
+            ZWriteOverride = HDSubShaderUtilities.ZWriteDefault,
+            ZTestOverride = HDSubShaderUtilities.zTestDepthEqualForOpaque,
             // ExtraDefines are set when the pass is generated
             Includes = new List<string>()
             {
@@ -326,7 +353,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 "AttributesMesh.uv2",           // SHADERPASS_LIGHT_TRANSPORT always uses uv2
                 "AttributesMesh.uv3",           // DEBUG_DISPLAY
 
-                "FragInputs.worldToTangent",
+                "FragInputs.tangentToWorld",
                 "FragInputs.positionRWS",
                 "FragInputs.texCoord0",
                 "FragInputs.texCoord1",
@@ -341,9 +368,8 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 HairMasterNode.SpecularOcclusionSlotId,
                 HairMasterNode.BentNormalSlotId,
                 HairMasterNode.HairStrandDirectionSlotId,
-                HairMasterNode.SubsurfaceMaskSlotId,
-                HairMasterNode.ThicknessSlotId,
-                HairMasterNode.DiffusionProfileHashSlotId,
+                HairMasterNode.TransmittanceSlotId,
+                HairMasterNode.RimTransmissionIntensitySlotId,
                 HairMasterNode.SmoothnessSlotId,
                 HairMasterNode.AmbientOcclusionSlotId,
                 HairMasterNode.EmissionSlotId,
@@ -358,17 +384,21 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 HairMasterNode.SecondarySpecularShiftSlotId,
                 HairMasterNode.LightingSlotId,
                 HairMasterNode.BackLightingSlotId,
+                HairMasterNode.DepthOffsetSlotId,
             },
             VertexShaderSlots = new List<int>()
             {
-                HairMasterNode.PositionSlotId
+                HairMasterNode.PositionSlotId,
+                HairMasterNode.VertexNormalSlotId,
+                HairMasterNode.VertexTangentSlotId
             },
             UseInPreview = true,
 
             OnGeneratePassImpl = (IMasterNode node, ref Pass pass) =>
             {
                 var masterNode = node as HairMasterNode;
-                HDSubShaderUtilities.GetStencilStateForForward(masterNode.RequiresSplitLighting(), ref pass);
+                HDSubShaderUtilities.SetStencilStateForForward(ref pass);
+                HDSubShaderUtilities.SetBlendModeForForward(ref pass);
 
                 pass.ExtraDefines.Remove("#ifndef DEBUG_DISPLAY\n#define SHADERPASS_FORWARD_BYPASS_ALPHA_TEST\n#endif");
                 pass.ColorMaskOverride = "ColorMask [_ColorMaskTransparentVel] 1";
@@ -378,19 +408,6 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                     // Don't do it with debug display mode as it is possible there is no depth prepass in this case
                     pass.ExtraDefines.Add("#ifndef DEBUG_DISPLAY\n#define SHADERPASS_FORWARD_BYPASS_ALPHA_TEST\n#endif");
                     pass.ZTestOverride = "ZTest Equal";
-                }
-                else
-                {
-                    pass.ZTestOverride = null;
-                }
-
-                if (masterNode.surfaceType == SurfaceType.Transparent && masterNode.backThenFrontRendering.isOn)
-                {
-                    pass.CullOverride = "Cull Back";
-                }
-                else
-                {
-                    pass.CullOverride = null;
                 }
             }
         };
@@ -405,6 +422,8 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             BlendOverride = "Blend One Zero",
             ZWriteOverride = "ZWrite On",
             ColorMaskOverride = "ColorMask 0",
+            ZTestOverride = "ZTest LEqual",
+            CullOverride = HDSubShaderUtilities.defaultCullMode,
             ExtraDefines = new List<string>()
             {
                 "#define CUTOFF_TRANSPARENT_DEPTH_POSTPASS",
@@ -417,17 +436,23 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             {
                 HairMasterNode.AlphaSlotId,
                 HairMasterNode.AlphaClipThresholdDepthPostpassSlotId,
+                HairMasterNode.DepthOffsetSlotId,
             },
             VertexShaderSlots = new List<int>()
             {
-                HairMasterNode.PositionSlotId
+                HairMasterNode.PositionSlotId,
+                HairMasterNode.VertexNormalSlotId,
+                HairMasterNode.VertexTangentSlotId
             },
-            UseInPreview = true
+            UseInPreview = true,
         };
 
-        private static HashSet<string> GetActiveFieldsFromMasterNode(AbstractMaterialNode iMasterNode, Pass pass)
+        public int GetPreviewPassIndex() { return 0; }
+
+        private static ActiveFields GetActiveFieldsFromMasterNode(AbstractMaterialNode iMasterNode, Pass pass)
         {
-            HashSet<string> activeFields = new HashSet<string>();
+            var activeFields = new ActiveFields();
+            var baseActiveFields = activeFields.baseInstance;
 
             HairMasterNode masterNode = iMasterNode as HairMasterNode;
             if (masterNode == null)
@@ -437,27 +462,18 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
             if (masterNode.doubleSidedMode != DoubleSidedMode.Disabled)
             {
-                activeFields.Add("DoubleSided");
-                if (pass.ShaderPassName != "SHADERPASS_VELOCITY")   // HACK to get around lack of a good interpolator dependency system
+                if (pass.ShaderPassName != "SHADERPASS_MOTION_VECTORS")   // HACK to get around lack of a good interpolator dependency system
                 {                                                   // we need to be able to build interpolators using multiple input structs
                                                                     // also: should only require isFrontFace if Normals are required...
-                    if (masterNode.doubleSidedMode == DoubleSidedMode.FlippedNormals)
-                    {
-                        activeFields.Add("DoubleSided.Flip");
-                    }
-                    else if (masterNode.doubleSidedMode == DoubleSidedMode.MirroredNormals)
-                    {
-                        activeFields.Add("DoubleSided.Mirror");
-                    }
                     // Important: the following is used in SharedCode.template.hlsl for determining the normal flip mode
-                    activeFields.Add("FragInputs.isFrontFace");
+                    baseActiveFields.Add("FragInputs.isFrontFace");
                 }
             }
 
             switch (masterNode.materialType)
             {
                 case HairMasterNode.MaterialType.KajiyaKay:
-                    activeFields.Add("Material.KajiyaKay");
+                    baseActiveFields.Add("Material.KajiyaKay");
                     break;
 
                 default:
@@ -472,23 +488,23 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 // If alpha test shadow is enable, we use it, otherwise we use the regular test
                 if (pass.PixelShaderUsesSlot(HairMasterNode.AlphaClipThresholdShadowSlotId) && masterNode.alphaTestShadow.isOn)
                 {
-                    activeFields.Add("AlphaTestShadow");
+                    baseActiveFields.Add("AlphaTestShadow");
                     ++count;
                 }
                 else if (pass.PixelShaderUsesSlot(HairMasterNode.AlphaClipThresholdSlotId))
                 {
-                    activeFields.Add("AlphaTest");
+                    baseActiveFields.Add("AlphaTest");
                     ++count;
                 }
                 // Other alpha test are suppose to be alone
                 else if (pass.PixelShaderUsesSlot(HairMasterNode.AlphaClipThresholdDepthPrepassSlotId))
                 {
-                    activeFields.Add("AlphaTestPrepass");
+                    baseActiveFields.Add("AlphaTestPrepass");
                     ++count;
                 }
                 else if (pass.PixelShaderUsesSlot(HairMasterNode.AlphaClipThresholdDepthPostpassSlotId))
                 {
-                    activeFields.Add("AlphaTestPostpass");
+                    baseActiveFields.Add("AlphaTestPostpass");
                     ++count;
                 }
                 UnityEngine.Debug.Assert(count == 1, "Alpha test value not set correctly");
@@ -496,70 +512,65 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
 
             if (masterNode.surfaceType != SurfaceType.Opaque)
             {
-                activeFields.Add("SurfaceType.Transparent");
+                if (masterNode.transparencyFog.isOn)
+                {
+                    baseActiveFields.Add("AlphaFog");
+                }
 
-                if (masterNode.alphaMode == AlphaMode.Alpha)
+                if (masterNode.transparentWritesMotionVec.isOn)
                 {
-                    activeFields.Add("BlendMode.Alpha");
-                }
-                else if (masterNode.alphaMode == AlphaMode.Premultiply)
-                {
-                    activeFields.Add("BlendMode.Premultiply");
-                }
-                else if (masterNode.alphaMode == AlphaMode.Additive)
-                {
-                    activeFields.Add("BlendMode.Add");
+                    baseActiveFields.Add("TransparentWritesMotionVec");
                 }
 
                 if (masterNode.blendPreserveSpecular.isOn)
                 {
-                    activeFields.Add("BlendMode.PreserveSpecular");
-                }
-
-                if (masterNode.transparencyFog.isOn)
-                {
-                    activeFields.Add("AlphaFog");
-                }
-
-                if (masterNode.transparentWritesVelocity.isOn)
-                {
-                    activeFields.Add("TransparentWritesVelocity");
+                    baseActiveFields.Add("BlendMode.PreserveSpecular");
                 }
             }
 
             if (!masterNode.receiveDecals.isOn)
             {
-                activeFields.Add("DisableDecals");
+                baseActiveFields.Add("DisableDecals");
             }
 
             if (!masterNode.receiveSSR.isOn)
             {
-                activeFields.Add("DisableSSR");
+                baseActiveFields.Add("DisableSSR");
+            }
+
+            if (masterNode.addPrecomputedVelocity.isOn)
+            {
+                baseActiveFields.Add("AddPrecomputedVelocity");
             }
 
             if (masterNode.specularAA.isOn && pass.PixelShaderUsesSlot(HairMasterNode.SpecularAAThresholdSlotId) && pass.PixelShaderUsesSlot(HairMasterNode.SpecularAAScreenSpaceVarianceSlotId))
             {
-                activeFields.Add("Specular.AA");
+                baseActiveFields.Add("Specular.AA");
             }
 
             if (masterNode.IsSlotConnected(HairMasterNode.BentNormalSlotId) && pass.PixelShaderUsesSlot(HairMasterNode.BentNormalSlotId))
             {
-                activeFields.Add("BentNormal");
+                baseActiveFields.Add("BentNormal");
             }
 
             if (masterNode.IsSlotConnected(HairMasterNode.HairStrandDirectionSlotId) && pass.PixelShaderUsesSlot(HairMasterNode.HairStrandDirectionSlotId))
             {
-                activeFields.Add("HairStrandDirection");
+                baseActiveFields.Add("HairStrandDirection");
             }
 
-            if (masterNode.transmission.isOn)
+            if (masterNode.IsSlotConnected(HairMasterNode.TransmittanceSlotId) && pass.PixelShaderUsesSlot(HairMasterNode.TransmittanceSlotId))
             {
-                activeFields.Add("Material.Transmission");
+                baseActiveFields.Add(HairMasterNode.TransmittanceSlotName);
             }
 
-            if (masterNode.subsurfaceScattering.isOn && masterNode.surfaceType != SurfaceType.Transparent)
+            if (masterNode.IsSlotConnected(HairMasterNode.RimTransmissionIntensitySlotId) && pass.PixelShaderUsesSlot(HairMasterNode.RimTransmissionIntensitySlotId))
             {
-                activeFields.Add("Material.SubsurfaceScattering");
+                baseActiveFields.Add(HairMasterNode.RimTransmissionIntensitySlotName);
+            }
+
+            if (masterNode.useLightFacingNormal.isOn)
+            {
+                baseActiveFields.Add("UseLightFacingNormal");
             }
 
             switch (masterNode.specularOcclusionMode)
@@ -567,13 +578,13 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 case SpecularOcclusionMode.Off:
                     break;
                 case SpecularOcclusionMode.FromAO:
-                    activeFields.Add("SpecularOcclusionFromAO");
+                    baseActiveFields.Add("SpecularOcclusionFromAO");
                     break;
                 case SpecularOcclusionMode.FromAOAndBentNormal:
-                    activeFields.Add("SpecularOcclusionFromAOBentNormal");
+                    baseActiveFields.Add("SpecularOcclusionFromAOBentNormal");
                     break;
                 case SpecularOcclusionMode.Custom:
-                    activeFields.Add("SpecularOcclusionCustom");
+                    baseActiveFields.Add("SpecularOcclusionCustom");
                     break;
 
                 default:
@@ -587,18 +598,24 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
                 bool connected = masterNode.IsSlotConnected(HairMasterNode.AmbientOcclusionSlotId);
                 if (connected || occlusionSlot.value != occlusionSlot.defaultValue)
                 {
-                    activeFields.Add("AmbientOcclusion");
+                    baseActiveFields.Add("AmbientOcclusion");
                 }
             }
-            
+
             if (masterNode.IsSlotConnected(HairMasterNode.LightingSlotId) && pass.PixelShaderUsesSlot(HairMasterNode.LightingSlotId))
             {
-                activeFields.Add("LightingGI");
+                baseActiveFields.Add("LightingGI");
             }
             if (masterNode.IsSlotConnected(HairMasterNode.BackLightingSlotId) && pass.PixelShaderUsesSlot(HairMasterNode.LightingSlotId))
             {
-                activeFields.Add("BackLightingGI");
+                baseActiveFields.Add("BackLightingGI");
             }
+
+            if (masterNode.depthOffset.isOn && pass.PixelShaderUsesSlot(HairMasterNode.DepthOffsetSlotId))
+                baseActiveFields.Add("DepthOffset");
+
+            if (masterNode.supportLodCrossFade.isOn)
+                baseActiveFields.AddAll("LodCrossFade");
 
             return activeFields;
         }
@@ -607,16 +624,20 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
         {
             if (mode == GenerationMode.ForReals || pass.UseInPreview)
             {
-                SurfaceMaterialOptions materialOptions = HDSubShaderUtilities.BuildMaterialOptions(masterNode.surfaceType, masterNode.alphaMode, masterNode.doubleSidedMode != DoubleSidedMode.Disabled, false);
-
                 pass.OnGeneratePass(masterNode);
 
                 // apply master node options to active fields
-                HashSet<string> activeFields = GetActiveFieldsFromMasterNode(masterNode, pass);
+                var activeFields = GetActiveFieldsFromMasterNode(masterNode, pass);
 
                 // use standard shader pass generation
-                bool vertexActive = masterNode.IsSlotConnected(HairMasterNode.PositionSlotId);
-                return HDSubShaderUtilities.GenerateShaderPass(masterNode, pass, mode, materialOptions, activeFields, result, sourceAssetDependencyPaths, vertexActive);
+                bool vertexActive = false;
+                if (masterNode.IsSlotConnected(HairMasterNode.PositionSlotId) ||
+                    masterNode.IsSlotConnected(HairMasterNode.VertexNormalSlotId) ||
+                    masterNode.IsSlotConnected(HairMasterNode.VertexNormalSlotId) )
+                {
+                    vertexActive = true;
+                }
+                return HDSubShaderUtilities.GenerateShaderPass(masterNode, pass, mode, activeFields, result, sourceAssetDependencyPaths, vertexActive);
             }
             else
             {
@@ -641,32 +662,25 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             subShader.AddShaderChunk("{", true);
             subShader.Indent();
             {
-                HDMaterialTags materialTags = HDSubShaderUtilities.BuildMaterialTags(masterNode.surfaceType, masterNode.sortPriority, masterNode.alphaTest.isOn);
-
                 // Add tags at the SubShader level
-                {
-                    var tagsVisitor = new ShaderStringBuilder();
-                    materialTags.GetTags(tagsVisitor, HDRenderPipeline.k_ShaderTagName);
-                    subShader.AddShaderChunk(tagsVisitor.ToString(), false);
-                }
+                var renderingPass = masterNode.surfaceType == SurfaceType.Opaque ? HDRenderQueue.RenderQueueType.Opaque : HDRenderQueue.RenderQueueType.Transparent;
+                int queue = HDRenderQueue.ChangeType(renderingPass, masterNode.sortPriority, masterNode.alphaTest.isOn);
+                HDSubShaderUtilities.AddTags(subShader, HDRenderPipeline.k_ShaderTagName, HDRenderTypeTags.HDLitShader, queue);
 
                 // generate the necessary shader passes
                 bool opaque = (masterNode.surfaceType == SurfaceType.Opaque);
                 bool transparent = !opaque;
 
                 bool transparentBackfaceActive = transparent && masterNode.backThenFrontRendering.isOn;
-                bool transparentDepthPrepassActive = transparent && masterNode.alphaTest.isOn && masterNode.alphaTestDepthPrepass.isOn;
-                bool transparentDepthPostpassActive = transparent && masterNode.alphaTest.isOn && masterNode.alphaTestDepthPostpass.isOn;
+                bool transparentDepthPrepassActive = transparent && masterNode.alphaTestDepthPrepass.isOn;
+                bool transparentDepthPostpassActive = transparent && masterNode.alphaTestDepthPostpass.isOn;
 
-                GenerateShaderPassHair(masterNode, m_PassMETA, mode, subShader, sourceAssetDependencyPaths);
                 GenerateShaderPassHair(masterNode, m_PassShadowCaster, mode, subShader, sourceAssetDependencyPaths);
+                GenerateShaderPassHair(masterNode, m_PassMETA, mode, subShader, sourceAssetDependencyPaths);
                 GenerateShaderPassHair(masterNode, m_SceneSelectionPass, mode, subShader, sourceAssetDependencyPaths);
 
-                if (opaque)
-                {
-                    GenerateShaderPassHair(masterNode, m_PassDepthForwardOnly, mode, subShader, sourceAssetDependencyPaths);
-                    GenerateShaderPassHair(masterNode, m_PassMotionVectors, mode, subShader, sourceAssetDependencyPaths);
-                }
+                GenerateShaderPassHair(masterNode, m_PassDepthForwardOnly, mode, subShader, sourceAssetDependencyPaths);
+                GenerateShaderPassHair(masterNode, m_PassMotionVectors, mode, subShader, sourceAssetDependencyPaths);
 
                 if (transparentBackfaceActive)
                 {
@@ -689,7 +703,7 @@ namespace UnityEditor.Experimental.Rendering.HDPipeline
             }
             subShader.Deindent();
             subShader.AddShaderChunk("}", true);
-            subShader.AddShaderChunk(@"CustomEditor ""UnityEditor.Experimental.Rendering.HDPipeline.HairGUI""");
+            subShader.AddShaderChunk(@"CustomEditor ""UnityEditor.Rendering.HighDefinition.HairGUI""");
 
             return subShader.GetShaderString(0);
         }

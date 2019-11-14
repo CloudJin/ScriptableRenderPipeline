@@ -35,6 +35,12 @@ namespace UnityEditor.VFX.UI
             Profiler.EndSample();
         }
 
+        public void AssetMoved()
+        {
+            m_PropertyRM.UpdateGUI(true);
+        }
+
+
         void OnAttachToPanel(AttachToPanelEvent e)
         {
             m_View = GetFirstAncestorOfType<VFXView>();
@@ -81,7 +87,7 @@ namespace UnityEditor.VFX.UI
             {
                 Remove(m_PropertyRM);
             }
-            m_PropertyRM = PropertyRM.Create(controller, 100);
+            m_PropertyRM = PropertyRM.Create(controller, VFXNodeUI.DefaultLabelWidth);
             if (m_PropertyRM != null)
             {
                 Add(m_PropertyRM);

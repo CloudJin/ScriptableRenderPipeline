@@ -15,9 +15,9 @@
 #define CBUFFER_START(name) cbuffer name {
 #define CBUFFER_END };
 
-#define PLATFORM_SUPPORTS_EXPLICIT_BINDING 1
-#define PLATFORM_NEEDS_UNORM_UAV_SPECIFIER 1
-#define PLATFORM_THREAD_GROUP_OPTIMAL_SIZE 0		// cannot infer the optimal compute shader group size.
+#define PLATFORM_SUPPORTS_EXPLICIT_BINDING
+#define PLATFORM_NEEDS_UNORM_UAV_SPECIFIER
+#define PLATFORM_SUPPORTS_BUFFER_ATOMICS_IN_PIXEL_SHADER
 
 // flow control attributes
 #define UNITY_BRANCH        [branch]
