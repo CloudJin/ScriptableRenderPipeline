@@ -174,6 +174,13 @@ namespace UnityEngine.Rendering.Universal
         }
 
         /// <summary>
+        /// Called when the render pipeline gets destroyed on quit or domain reload.
+        /// </summary>
+        public virtual void Cleanup()
+        {
+        }
+
+        /// <summary>
         /// Execute the enqueued render passes. This automatically handles editor and stereo rendering.
         /// </summary>
         /// <param name="context">Use this render context to issue any draw commands during execution.</param>
@@ -189,7 +196,11 @@ namespace UnityEngine.Rendering.Universal
             // For now we set the time variables per camera, as we plan to remove `SetupCamearProperties`.
             // Setting the time per frame would take API changes to pass the variable to each camera render.
             // Once `SetupCameraProperties` is gone, the variable should be set higher in the call-stack.
+#if UNITY_EDITOR
+            float time = Application.isPlaying ? Time.time : Time.realtimeSinceStartup;
+#else
             float time = Time.time;
+#endif
             float deltaTime = Time.deltaTime;
             float smoothDeltaTime = Time.smoothDeltaTime;
             SetShaderTimeValues(time, deltaTime, smoothDeltaTime);
@@ -221,7 +232,7 @@ namespace UnityEngine.Rendering.Universal
             /// * Setup global time properties (_Time, _SinTime, _CosTime)
             bool stereoEnabled = renderingData.cameraData.isStereoEnabled;
             context.SetupCameraProperties(camera, stereoEnabled);
-            
+
             // Override time values from when `SetupCameraProperties` were called.
             // They might be a frame behind.
             // We can remove this after removing `SetupCameraProperties` as the values should be per frame, and not per camera.
@@ -229,6 +240,14 @@ namespace UnityEngine.Rendering.Universal
 
             if (stereoEnabled)
                 BeginXRRendering(context, camera);
+
+#if VISUAL_EFFECT_GRAPH_0_0_1_OR_NEWER
+            var localCmd = CommandBufferPool.Get(string.Empty);
+            //Triggers dispatch per camera, all global parameters should have been setup at this stage.
+            VFX.VFXManager.ProcessCameraCommand(camera, localCmd);
+            context.ExecuteCommandBuffer(localCmd);
+            CommandBufferPool.Release(localCmd);
+#endif
 
             // In this block main rendering executes.
             ExecuteBlock(RenderPassBlock.MainRendering, blockRanges, context, ref renderingData);
@@ -243,7 +262,8 @@ namespace UnityEngine.Rendering.Universal
 
             DrawGizmos(context, camera, GizmoSubset.PostImageEffects);
 
-            InternalFinishRendering(context);
+            //if (renderingData.resolveFinalTarget)
+                InternalFinishRendering(context);
             blockRanges.Dispose();
         }
 
@@ -270,7 +290,7 @@ namespace UnityEngine.Rendering.Universal
             cameraClearFlags = CameraClearFlags.SolidColor;
 #endif
 
-            // LWRP doesn't support CameraClearFlags.DepthOnly and CameraClearFlags.Nothing.
+            // Universal RP doesn't support CameraClearFlags.DepthOnly and CameraClearFlags.Nothing.
             // CameraClearFlags.DepthOnly has the same effect of CameraClearFlags.SolidColor
             // CameraClearFlags.Nothing clears Depth on PC/Desktop and in mobile it clears both
             // depth and color.
@@ -370,6 +390,12 @@ namespace UnityEngine.Rendering.Universal
 
                 Camera camera = cameraData.camera;
                 ClearFlag clearFlag = GetCameraClearFlag(camera.clearFlags);
+
+                // Overlay cameras composite on top of previous ones. They don't clear.
+                // MTT: Commented due to not implemented yet
+//                if (renderingData.cameraData.renderType == CameraRenderType.Overlay)
+//                    clearFlag = ClearFlag.None;
+
                 SetRenderTarget(cmd, m_CameraColorTarget, m_CameraDepthTarget, clearFlag,
                     CoreUtils.ConvertSRGBToActiveColorSpace(camera.backgroundColor));
 

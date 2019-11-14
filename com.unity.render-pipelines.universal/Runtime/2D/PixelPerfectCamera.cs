@@ -57,7 +57,23 @@ namespace UnityEngine.Experimental.Rendering.Universal
         /// <summary>
         /// Ratio of the rendered Sprites compared to their original size (readonly).
         /// </summary>
-        public int pixelRatio { get { return m_Internal.zoom; } }
+        public int pixelRatio
+        {
+            get
+            {
+                if (m_CinemachineCompatibilityMode)
+                {
+                    if (m_UpscaleRT)
+                        return m_Internal.zoom * m_Internal.cinemachineVCamZoom;
+                    else
+                        return m_Internal.cinemachineVCamZoom;
+                }
+                else
+                {
+                    return m_Internal.zoom;
+                }
+            }
+        }
 
         /// <summary>
         /// Round a arbitrary position to an integer pixel position. Works in world space.
@@ -81,6 +97,21 @@ namespace UnityEngine.Experimental.Rendering.Universal
             return result;
         }
 
+        /// <summary>
+        /// Find a pixel-perfect orthographic size as close to targetOrthoSize as possible. Used by Cinemachine to solve compatibility issues with Pixel Perfect Camera.
+        /// </summary>
+        /// <param name="targetOrthoSize">Orthographic size from the live Cinemachine Virtual Camera.</param>
+        /// <returns>The corrected orthographic size.</returns>
+        public float CorrectCinemachineOrthoSize(float targetOrthoSize)
+        {
+            m_CinemachineCompatibilityMode = true;
+
+            if (m_Internal == null)
+                return targetOrthoSize;
+            else
+                return m_Internal.CorrectCinemachineOrthoSize(targetOrthoSize);
+        }
+
         [SerializeField] int    m_AssetsPPU         = 100;
         [SerializeField] int    m_RefResolutionX    = 320;
         [SerializeField] int    m_RefResolutionY    = 180;
@@ -92,8 +123,9 @@ namespace UnityEngine.Experimental.Rendering.Universal
 
         Camera m_Camera;
         PixelPerfectCameraInternal m_Internal;
+        bool m_CinemachineCompatibilityMode;
 
-        bool isRunning
+        internal bool isRunning
         {
             get
             {
@@ -116,25 +148,14 @@ namespace UnityEngine.Experimental.Rendering.Universal
             }
         }
 
-        internal Rect finalBlitPixelRect
-        {
-            get
-            {
-                if (!isRunning || !m_Internal.useOffscreenRT)
-                    return Rect.zero;
-                else
-                    return m_Internal.CalculateFinalBlitPixelRect(m_Camera.aspect, Screen.width, Screen.height);
-            }
-        }
-
-        internal bool useOffscreenRT
+        internal Vector2Int offscreenRTSize
         {
             get
             {
                 if (!isRunning)
-                    return false;
+                    return Vector2Int.zero;
                 else
-                    return m_Internal.useOffscreenRT;
+                    return new Vector2Int(m_Internal.offscreenRTWidth, m_Internal.offscreenRTHeight);
             }
         }
 
@@ -156,9 +177,20 @@ namespace UnityEngine.Experimental.Rendering.Universal
             m_Internal = new PixelPerfectCameraInternal(this);
 
             m_Internal.originalOrthoSize = m_Camera.orthographicSize;
+        }
 
-            if (m_Camera.targetTexture != null)
-                Debug.LogWarning("Render to texture is not supported by Pixel Perfect Camera.", m_Camera);
+        void LateUpdate()
+        {
+#if UNITY_EDITOR
+            if (!UnityEditor.EditorApplication.isPaused)
+#endif
+            {
+                // Reset the Cinemachine compatibility mode every frame.
+                // If any CinemachinePixelPerfect extension is present, they will turn this on 
+                // at a later time (during CinemachineBrain's LateUpdate(), which is 
+                // guaranteed to be after PixelPerfectCamera's LateUpdate()).
+                m_CinemachineCompatibilityMode = false;
+            }
         }
 
         void OnBeginCameraRendering(ScriptableRenderContext context, Camera camera)
@@ -166,16 +198,26 @@ namespace UnityEngine.Experimental.Rendering.Universal
             if (camera != m_Camera)
                 return;
 
-            m_Internal.CalculateCameraProperties(Screen.width, Screen.height);
+            var targetTexture = m_Camera.targetTexture;
+            Vector2Int rtSize = targetTexture == null ? new Vector2Int(Screen.width, Screen.height) : new Vector2Int(targetTexture.width, targetTexture.height);
+
+            m_Internal.CalculateCameraProperties(rtSize.x, rtSize.y);
 
             PixelSnap();
 
-            if (m_Internal.pixelRect != Rect.zero)
-                m_Camera.pixelRect = m_Internal.pixelRect;
+            if (m_Internal.useOffscreenRT)
+                m_Camera.pixelRect = m_Internal.CalculateFinalBlitPixelRect(m_Camera.aspect, rtSize.x, rtSize.y);
             else
                 m_Camera.rect = new Rect(0.0f, 0.0f, 1.0f, 1.0f);
 
-            m_Camera.orthographicSize = m_Internal.orthoSize;
+            // In Cinemachine compatibility mode the control over orthographic size should
+            // be given to the virtual cameras, whose orthographic sizes will be corrected to
+            // be pixel-perfect. This way when there's blending between virtual cameras, we
+            // can have temporary not-pixel-perfect but smooth transitions.
+            if (!m_CinemachineCompatibilityMode)
+            {
+                m_Camera.orthographicSize = m_Internal.orthoSize;
+            }
 
             UnityEngine.U2D.PixelPerfectRendering.pixelSnapSpacing = m_Internal.unitsPerPixel;
         }
@@ -213,12 +255,10 @@ namespace UnityEngine.Experimental.Rendering.Universal
 #endif
         }
 
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
         // Show on-screen warning about invalid render resolutions.
         void OnGUI()
         {
-            if (!Debug.isDebugBuild && !Application.isEditor)
-                return;
-
 #if UNITY_EDITOR
             if (!UnityEditor.EditorApplication.isPlaying && !runInEditMode)
                 return;
@@ -237,13 +277,17 @@ namespace UnityEngine.Experimental.Rendering.Universal
                 GUILayout.Box(warning);
             }
 
-            if (Screen.width < refResolutionX || Screen.height < refResolutionY)
+            var targetTexture = m_Camera.targetTexture;
+            Vector2Int rtSize = targetTexture == null ? new Vector2Int(Screen.width, Screen.height) : new Vector2Int(targetTexture.width, targetTexture.height);
+
+            if (rtSize.x < refResolutionX || rtSize.y < refResolutionY)
             {
-                GUILayout.Box("Screen resolution is smaller than the reference resolution. Image may appear stretched or cropped.");
+                GUILayout.Box("Target resolution is smaller than the reference resolution. Image may appear stretched or cropped.");
             }
 
             GUI.color = oldColor;
         }
+#endif
 
 #if UNITY_EDITOR
         void OnPlayModeChanged(UnityEditor.PlayModeStateChange state)

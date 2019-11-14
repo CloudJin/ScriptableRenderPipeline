@@ -377,12 +377,6 @@ namespace UnityEngine.Rendering.HighDefinition
             return result;
         }
 
-        bool IsVolumetricLightingEnabled(HDCamera hdCamera)
-        {
-            var visualEnvironment = VolumeManager.instance.stack.GetComponent<VisualEnvironment>();
-            return hdCamera.frameSettings.IsEnabled(FrameSettingsField.Volumetrics) && visualEnvironment.fogType.value == FogType.Volumetric;
-        }
-
         class VolumeVoxelizationPassData
         {
             public VolumeVoxelizationParameters parameters;
@@ -398,7 +392,7 @@ namespace UnityEngine.Rendering.HighDefinition
                                                     ComputeBuffer       visibleVolumeDataBuffer,
                                                     ComputeBuffer       bigTileLightListBuffer)
         {
-            if (IsVolumetricLightingEnabled(hdCamera))
+            if (Fog.IsVolumetricLightingEnabled(hdCamera))
             {
                 using (var builder = renderGraph.AddRenderPass<VolumeVoxelizationPassData>("Volume Voxelization", out var passData))
                 {
@@ -413,7 +407,7 @@ namespace UnityEngine.Rendering.HighDefinition
                         dimension = TextureDimension.Tex3D,
                         colorFormat = GraphicsFormat.R16G16B16A16_SFloat, // 8888_sRGB is not precise enough
                         enableRandomWrite = true,
-                        slices = ComputeVBufferSliceCount(volumetricLightingPreset, true),
+                        slices = ComputeVBufferSliceCount(volumetricLightingPreset),
                         /* useDynamicScale: true, // <- TODO ,*/
                         name = "VBufferDensity"
                     }));
@@ -447,7 +441,7 @@ namespace UnityEngine.Rendering.HighDefinition
 
         RenderGraphResource VolumetricLightingPass(RenderGraph renderGraph, HDCamera hdCamera, RenderGraphResource densityBuffer, ComputeBuffer bigTileLightListBuffer, ShadowResult shadowResult, int frameIndex)
         {
-            if (IsVolumetricLightingEnabled(hdCamera))
+            if (Fog.IsVolumetricLightingEnabled(hdCamera))
             {
                 var parameters = PrepareVolumetricLightingParameters(hdCamera, frameIndex);
 
@@ -463,7 +457,7 @@ namespace UnityEngine.Rendering.HighDefinition
                         dimension = TextureDimension.Tex3D,
                         colorFormat = GraphicsFormat.R16G16B16A16_SFloat, // 8888_sRGB is not precise enough
                         enableRandomWrite = true,
-                        slices = ComputeVBufferSliceCount(volumetricLightingPreset, true),
+                        slices = ComputeVBufferSliceCount(volumetricLightingPreset),
                         /* useDynamicScale: true, // <- TODO ,*/
                         name = "VBufferIntegral"
                     }, HDShaderIDs._VBufferLighting));

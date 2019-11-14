@@ -115,7 +115,7 @@ float3x3 BuildTangentToWorld(float4 tangentWS, float3 normalWS)
 
     // Normalize normalWS vector but keep the renormFactor to apply it to bitangent and tangent
     float3 unnormalizedNormalWS = normalWS;
-    float renormFactor = 1.0 / length(unnormalizedNormalWS);
+    float renormFactor = 1.0 / max(FLT_MIN, length(unnormalizedNormalWS));
 
     // bitangent on the fly option in xnormal to reduce vertex shader outputs.
     // this is the mikktspace transformation (must use unnormalized attributes)
@@ -128,6 +128,24 @@ float3x3 BuildTangentToWorld(float4 tangentWS, float3 normalWS)
     tangentToWorld[2] = tangentToWorld[2] * renormFactor;		// normalizes the interpolated vertex normal
 
     return tangentToWorld;
+}
+
+// Transforms normal from object to world space
+float3 TransformPreviousObjectToWorldNormal(float3 normalOS)
+{
+#ifdef UNITY_ASSUME_UNIFORM_SCALING
+    return normalize(mul((float3x3)unity_MatrixPreviousM, normalOS));
+#else
+    // Normal need to be multiply by inverse transpose
+    return normalize(mul(normalOS, (float3x3)unity_MatrixPreviousMI));
+#endif
+}
+
+// Transforms local position to camera relative world space
+float3 TransformPreviousObjectToWorld(float3 positionOS)
+{
+    float4x4 previousModelMatrix = ApplyCameraTranslationToMatrix(unity_MatrixPreviousM);
+    return mul(previousModelMatrix, float4(positionOS, 1.0)).xyz;
 }
 
 #endif // UNITY_SHADER_VARIABLES_FUNCTIONS_INCLUDED

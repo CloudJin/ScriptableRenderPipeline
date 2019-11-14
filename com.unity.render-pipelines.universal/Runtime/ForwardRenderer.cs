@@ -1,6 +1,13 @@
+using UnityEngine.Rendering.Universal.Internal;
+
 namespace UnityEngine.Rendering.Universal
 {
-    internal class ForwardRenderer : ScriptableRenderer
+    /// <summary>
+    /// Default renderer for Universal RP.
+    /// This renderer is supported on all Universal RP supported platforms.
+    /// It uses a classic forward rendering strategy with per-object light culling.
+    /// </summary>
+    public sealed class ForwardRenderer : ScriptableRenderer
     {
         const int k_DepthStencilBufferBits = 32;
         const string k_CreateCameraTextures = "Create Camera Texture";
@@ -37,12 +44,17 @@ namespace UnityEngine.Rendering.Universal
         ForwardLights m_ForwardLights;
         StencilState m_DefaultStencilState;
 
+        Material m_BlitMaterial;
+        Material m_CopyDepthMaterial;
+        Material m_SamplingMaterial;
+        Material m_ScreenspaceShadowsMaterial;
+
         public ForwardRenderer(ForwardRendererData data) : base(data)
         {
-            Material blitMaterial = CoreUtils.CreateEngineMaterial(data.shaders.blitPS);
-            Material copyDepthMaterial = CoreUtils.CreateEngineMaterial(data.shaders.copyDepthPS);
-            Material samplingMaterial = CoreUtils.CreateEngineMaterial(data.shaders.samplingPS);
-            Material screenspaceShadowsMaterial = CoreUtils.CreateEngineMaterial(data.shaders.screenSpaceShadowPS);
+            m_BlitMaterial = CoreUtils.CreateEngineMaterial(data.shaders.blitPS);
+            m_CopyDepthMaterial = CoreUtils.CreateEngineMaterial(data.shaders.copyDepthPS);
+            m_SamplingMaterial = CoreUtils.CreateEngineMaterial(data.shaders.samplingPS);
+            m_ScreenspaceShadowsMaterial = CoreUtils.CreateEngineMaterial(data.shaders.screenSpaceShadowPS);
 
             StencilStateData stencilData = data.defaultStencilState;
             m_DefaultStencilState = StencilState.defaultValue;
@@ -57,21 +69,21 @@ namespace UnityEngine.Rendering.Universal
             m_MainLightShadowCasterPass = new MainLightShadowCasterPass(RenderPassEvent.BeforeRenderingShadows);
             m_AdditionalLightsShadowCasterPass = new AdditionalLightsShadowCasterPass(RenderPassEvent.BeforeRenderingShadows);
             m_DepthPrepass = new DepthOnlyPass(RenderPassEvent.BeforeRenderingPrepasses, RenderQueueRange.opaque, data.opaqueLayerMask);
-            m_ScreenSpaceShadowResolvePass = new ScreenSpaceShadowResolvePass(RenderPassEvent.BeforeRenderingPrepasses, screenspaceShadowsMaterial);
+            m_ScreenSpaceShadowResolvePass = new ScreenSpaceShadowResolvePass(RenderPassEvent.BeforeRenderingPrepasses, m_ScreenspaceShadowsMaterial);
             m_ColorGradingLutPass = new ColorGradingLutPass(RenderPassEvent.BeforeRenderingOpaques, data.postProcessData);
             m_RenderOpaqueForwardPass = new DrawObjectsPass("Render Opaques", true, RenderPassEvent.BeforeRenderingOpaques, RenderQueueRange.opaque, data.opaqueLayerMask, m_DefaultStencilState, stencilData.stencilReference);
-            m_CopyDepthPass = new CopyDepthPass(RenderPassEvent.BeforeRenderingOpaques, copyDepthMaterial);
+            m_CopyDepthPass = new CopyDepthPass(RenderPassEvent.BeforeRenderingOpaques, m_CopyDepthMaterial);
             m_DrawSkyboxPass = new DrawSkyboxPass(RenderPassEvent.BeforeRenderingSkybox);
-            m_CopyColorPass = new CopyColorPass(RenderPassEvent.BeforeRenderingTransparents, samplingMaterial);
+            m_CopyColorPass = new CopyColorPass(RenderPassEvent.BeforeRenderingTransparents, m_SamplingMaterial);
             m_RenderTransparentForwardPass = new DrawObjectsPass("Render Transparents", false, RenderPassEvent.BeforeRenderingTransparents, RenderQueueRange.transparent, data.transparentLayerMask, m_DefaultStencilState, stencilData.stencilReference);
             m_OnRenderObjectCallbackPass = new InvokeOnRenderObjectCallbackPass(RenderPassEvent.BeforeRenderingPostProcessing);
             m_PostProcessPass = new PostProcessPass(RenderPassEvent.BeforeRenderingPostProcessing, data.postProcessData);
             m_FinalPostProcessPass = new PostProcessPass(RenderPassEvent.AfterRenderingPostProcessing, data.postProcessData);
             m_CapturePass = new CapturePass(RenderPassEvent.AfterRendering);
-            m_FinalBlitPass = new FinalBlitPass(RenderPassEvent.AfterRendering, blitMaterial);
+            m_FinalBlitPass = new FinalBlitPass(RenderPassEvent.AfterRendering, m_BlitMaterial);
 
 #if UNITY_EDITOR
-            m_SceneViewDepthCopyPass = new SceneViewDepthCopyPass(RenderPassEvent.AfterRendering + 9, copyDepthMaterial);
+            m_SceneViewDepthCopyPass = new SceneViewDepthCopyPass(RenderPassEvent.AfterRendering + 9, m_CopyDepthMaterial);
 #endif
 
             // RenderTexture format depends on camera and pipeline (HDR, non HDR, etc)
@@ -85,6 +97,17 @@ namespace UnityEngine.Rendering.Universal
             m_ForwardLights = new ForwardLights();
         }
 
+        /// <inheritdoc />
+        public override void Cleanup()
+        {
+            m_PostProcessPass.Cleanup();
+            CoreUtils.Destroy(m_BlitMaterial);
+            CoreUtils.Destroy(m_CopyDepthMaterial);
+            CoreUtils.Destroy(m_SamplingMaterial);
+            CoreUtils.Destroy(m_ScreenspaceShadowsMaterial);
+        }
+
+        /// <inheritdoc />
         public override void Setup(ScriptableRenderContext context, ref RenderingData renderingData)
         {
             Camera camera = renderingData.cameraData.camera;
@@ -217,10 +240,11 @@ namespace UnityEngine.Rendering.Universal
             // we need to stay in a RT
             if (afterRenderExists)
             {
+                bool willRenderFinalPass = (m_ActiveCameraColorAttachment != RenderTargetHandle.CameraTarget);
                 // perform post with src / dest the same
                 if (postProcessEnabled)
                 {
-                    m_PostProcessPass.Setup(cameraTargetDescriptor, m_ActiveCameraColorAttachment, m_AfterPostProcessColor, m_ActiveCameraDepthAttachment, m_ColorGradingLut);
+                    m_PostProcessPass.Setup(cameraTargetDescriptor, m_ActiveCameraColorAttachment, m_AfterPostProcessColor, m_ActiveCameraDepthAttachment, m_ColorGradingLut, requiresFinalPostProcessPass, !willRenderFinalPass);
                     EnqueuePass(m_PostProcessPass);
                 }
 
@@ -251,14 +275,14 @@ namespace UnityEngine.Rendering.Universal
                 {
                     if (requiresFinalPostProcessPass)
                     {
-                        m_PostProcessPass.Setup(cameraTargetDescriptor, m_ActiveCameraColorAttachment, m_AfterPostProcessColor, m_ActiveCameraDepthAttachment, m_ColorGradingLut);
+                        m_PostProcessPass.Setup(cameraTargetDescriptor, m_ActiveCameraColorAttachment, m_AfterPostProcessColor, m_ActiveCameraDepthAttachment, m_ColorGradingLut, true, false);
                         EnqueuePass(m_PostProcessPass);
                         m_FinalPostProcessPass.SetupFinalPass(m_AfterPostProcessColor);
                         EnqueuePass(m_FinalPostProcessPass);
                     }
                     else
                     {
-                        m_PostProcessPass.Setup(cameraTargetDescriptor, m_ActiveCameraColorAttachment, RenderTargetHandle.CameraTarget, m_ActiveCameraDepthAttachment, m_ColorGradingLut);
+                        m_PostProcessPass.Setup(cameraTargetDescriptor, m_ActiveCameraColorAttachment, RenderTargetHandle.CameraTarget, m_ActiveCameraDepthAttachment, m_ColorGradingLut, false, true);
                         EnqueuePass(m_PostProcessPass);
                     }
                 }
@@ -278,11 +302,13 @@ namespace UnityEngine.Rendering.Universal
 #endif
         }
 
+        /// <inheritdoc />
         public override void SetupLights(ScriptableRenderContext context, ref RenderingData renderingData)
         {
             m_ForwardLights.Setup(context, ref renderingData);
         }
 
+        /// <inheritdoc />
         public override void SetupCullingParameters(ref ScriptableCullingParameters cullingParameters,
             ref CameraData cameraData)
         {
@@ -294,9 +320,14 @@ namespace UnityEngine.Rendering.Universal
             //     cullingParameters.cullingOptions |= CullingOptions.DisablePerObjectCulling;
             // }
 
-            cullingParameters.shadowDistance = Mathf.Min(cameraData.maxShadowDistance, camera.farClipPlane);
+            // If shadow is disabled, disable shadow caster culling
+            if (Mathf.Approximately(cameraData.maxShadowDistance, 0.0f))
+                cullingParameters.cullingOptions &= ~CullingOptions.ShadowCasters;
+
+            cullingParameters.shadowDistance = cameraData.maxShadowDistance;
         }
 
+        /// <inheritdoc />
         public override void FinishRendering(CommandBuffer cmd)
         {
             if (m_ActiveCameraColorAttachment != RenderTargetHandle.CameraTarget)
@@ -377,8 +408,7 @@ namespace UnityEngine.Rendering.Universal
                 return requiresBlitForOffscreenCamera;
 
             return requiresBlitForOffscreenCamera || cameraData.isSceneViewCamera || isScaledRender || cameraData.isHdrEnabled ||
-                   !isCompatibleBackbufferTextureDimension || !cameraData.isDefaultViewport || isCapturing || Display.main.requiresBlitToBackbuffer
-                   || (renderingData.killAlphaInFinalBlit && !isStereoEnabled);
+                   !isCompatibleBackbufferTextureDimension || !cameraData.isDefaultViewport || isCapturing || Display.main.requiresBlitToBackbuffer;
         }
 
         bool CanCopyDepth(ref CameraData cameraData)

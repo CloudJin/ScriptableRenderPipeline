@@ -8,6 +8,7 @@ Shader "Hidden/Universal Render Pipeline/UberPost"
         #pragma multi_compile_local _ _HDR_GRADING _TONEMAP_ACES _TONEMAP_NEUTRAL
         #pragma multi_compile_local _ _FILM_GRAIN
         #pragma multi_compile_local _ _DITHERING
+		#pragma multi_compile_local _ _LINEAR_TO_SRGB_CONVERSION
 
         #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
         #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Filtering.hlsl"
@@ -112,7 +113,7 @@ Shader "Hidden/Universal Render Pipeline/UberPost"
         {
             UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
-            float2 uv = input.uv;
+            float2 uv = UnityStereoTransformScreenSpaceTex(input.uv);
             float2 uvDistorted = DistortUV(uv);
 
             half3 color = (0.0).xxx;
@@ -201,7 +202,7 @@ Shader "Hidden/Universal Render Pipeline/UberPost"
             #endif
 
             // Back to sRGB
-            #if UNITY_COLORSPACE_GAMMA
+            #if UNITY_COLORSPACE_GAMMA || _LINEAR_TO_SRGB_CONVERSION
             {
                 color = LinearToSRGB(color);
             }

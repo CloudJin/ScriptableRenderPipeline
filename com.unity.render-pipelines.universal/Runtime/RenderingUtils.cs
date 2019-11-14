@@ -5,6 +5,9 @@ using UnityEngine.Scripting.APIUpdating;
 
 namespace UnityEngine.Rendering.Universal
 {
+    /// <summary>
+    /// Contains properties and helper functions that you can use when rendering.
+    /// </summary>
     [MovedFrom("UnityEngine.Rendering.LWRP")] public static class RenderingUtils
     {
         static List<ShaderTagId> m_LegacyShaderPassNames = new List<ShaderTagId>()
@@ -18,6 +21,10 @@ namespace UnityEngine.Rendering.Universal
         };
 
         static Mesh s_FullscreenMesh = null;
+
+        /// <summary>
+        /// Returns a mesh that you can use with <see cref="CommandBuffer.DrawMesh(Mesh, Matrix4x4, Material)"/> to render full-screen effects.
+        /// </summary>
         public static Mesh fullscreenMesh
         {
             get
@@ -62,11 +69,15 @@ namespace UnityEngine.Rendering.Universal
             // We fallback to UBO in those cases.
             get
             {
+                // TODO: For now disabling SSBO until figure out Vulkan binding issues.
+                // When enabling this also enable it in shader side in Input.hlsl
+                return false;
+
                 // We don't use SSBO in D3D because we can't figure out without adding shader variants if platforms is D3D10.
-                GraphicsDeviceType deviceType = SystemInfo.graphicsDeviceType;
-                return !Application.isMobilePlatform &&
-                    (deviceType == GraphicsDeviceType.Metal || deviceType == GraphicsDeviceType.Vulkan ||
-                     deviceType == GraphicsDeviceType.PlayStation4 || deviceType == GraphicsDeviceType.XboxOne);
+                //GraphicsDeviceType deviceType = SystemInfo.graphicsDeviceType;
+                //return !Application.isMobilePlatform &&
+                //    (deviceType == GraphicsDeviceType.Metal || deviceType == GraphicsDeviceType.Vulkan ||
+                //     deviceType == GraphicsDeviceType.PlayStation4 || deviceType == GraphicsDeviceType.XboxOne);
             }
             
         }
@@ -77,15 +88,23 @@ namespace UnityEngine.Rendering.Universal
             get
             {
                 if (s_ErrorMaterial == null)
-                    s_ErrorMaterial = new Material(Shader.Find("Hidden/InternalErrorShader"));
+                    s_ErrorMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/FallbackError"));
 
                 return s_ErrorMaterial;
             }
         }
 
+        // This is used to render materials that contain built-in shader passes not compatible with URP. 
+        // It will render those legacy passes with error/pink shader.
         [Conditional("DEVELOPMENT_BUILD"), Conditional("UNITY_EDITOR")]
         internal static void RenderObjectsWithError(ScriptableRenderContext context, ref CullingResults cullResults, Camera camera, FilteringSettings filterSettings, SortingCriteria sortFlags)
         {
+            // TODO: When importing project, AssetPreviewUpdater::CreatePreviewForAsset will be called multiple times.
+            // This might be in a point that some resources required for the pipeline are not finished importing yet.
+            // Proper fix is to add a fence on asset import.
+            if (errorMaterial == null)
+                return;
+            
             SortingSettings sortingSettings = new SortingSettings(camera) { criteria = sortFlags };
             DrawingSettings errorSettings = new DrawingSettings(m_LegacyShaderPassNames[0], sortingSettings)
             {
@@ -107,7 +126,13 @@ namespace UnityEngine.Rendering.Universal
             m_RenderTextureFormatSupport.Clear();
         }
 
-        internal static bool SupportsRenderTextureFormat(RenderTextureFormat format)
+        /// <summary>
+        /// Checks if a render texture format is supported by the run-time system.
+        /// Similar to <see cref="SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat)"/>, but doesn't allocate memory.
+        /// </summary>
+        /// <param name="format">The format to look up.</param>
+        /// <returns>Returns true if the graphics card supports the given <c>RenderTextureFormat</c></returns>
+        public static bool SupportsRenderTextureFormat(RenderTextureFormat format)
         {
             if (!m_RenderTextureFormatSupport.TryGetValue(format, out var support))
             {

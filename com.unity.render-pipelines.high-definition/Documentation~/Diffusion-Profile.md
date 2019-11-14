@@ -26,7 +26,7 @@ To create a Diffusion Profile, navigate to __Assets > Create > Rendering > Diffu
 
 | Property| Description |
 |:---|:---|
-| **Transmission Mode** | Use the drop-down to select a method for calculating light transmission. <br />&#8226; **Thick Object**: is for geometrically thick meshes.<br />&#8226; **Thin Object**: is for thin, double-sided, geometry. |
+| **Transmission Mode** | Use the drop-down to select a method for calculating light transmission. <br />&#8226; **Thick Object**: is for geometrically thick Meshes.<br />&#8226; **Thin Object**: is for thin, double-sided, geometry. |
 | **Transmission Tint** | Specifies a color to tint the translucent lighting. Unlike the Scattering Distance, its effect does not change depending on the distance below the surface. |
 | **Min-Max Thickness (mm)** | Sets the range of the thickness of the Mesh. Displays the minimum and maximum values of the Thickness Remap (mm) slider property below. |
 | **Thickness Remap (mm)** | Sets the range of the thickness. The Material’s Thickness Map modulates this value. |
@@ -57,6 +57,6 @@ Because you cannot control the distances HDRP derives from the shadow map, the b
 For HDRP 5.5.0-preview and 6.3.0-preview or newer. 
 Materials should smoothly upgrade themselves to reference the __Diffusion Profile__ Asset instead of the old index in the Diffusion Profile List. There are some exceptions:
 
-- ShaderGraphs produce an error message saying that HDRP can not upgrade the __Diffusion Profile__. You must set the __Diffusion Profile__ slot / node value manually.
+- ShaderGraphs produce an error message saying that HDRP cannot upgrade the __Diffusion Profile__. You must set the __Diffusion Profile__ slot / node value manually.
 - Visual Effect Graphs also produce an error and you must set the __Diffusion Profile__ reference manually.
 - You must update Materials serialized inside the Scene (not existing as an Asset) manually. Navigate to __Edit > Render Pipeline > Upgrade all Materials to newer version__. Note that you must load the Materials in the Scene to upgrade them.

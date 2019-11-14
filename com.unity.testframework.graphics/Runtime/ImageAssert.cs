@@ -13,6 +13,7 @@ using Is = UnityEngine.TestTools.Constraints.Is;
 using UnityEngine.Networking.PlayerConnection;
 using UnityEngine;
 using UnityEngine.Profiling;
+using UnityEngine.Experimental.Rendering;
 
 namespace UnityEngine.TestTools.Graphics
 {
@@ -61,7 +62,10 @@ namespace UnityEngine.TestTools.Graphics
             // This PR adds a dummy rendered frame before doing the real rendering and compare images ( test already has frame delay, but there is no rendering )
             int dummyRenderedFrameCount = 1;
 
-            var rt = RenderTexture.GetTemporary(width, height, 24);
+            var defaultFormat = (settings.UseHDR) ? SystemInfo.GetGraphicsFormat(DefaultFormat.HDR) : SystemInfo.GetGraphicsFormat(DefaultFormat.LDR);
+            RenderTextureDescriptor desc = new RenderTextureDescriptor(width, height, defaultFormat, 24);
+
+            var rt = RenderTexture.GetTemporary(desc);
             Texture2D actual = null;
             try
             {
@@ -77,10 +81,23 @@ namespace UnityEngine.TestTools.Graphics
 					// only proceed the test on the last rendered frame
 					if (dummyRenderedFrameCount == i)
 					{
-						actual = new Texture2D(width, height, format, false);
-						RenderTexture.active = rt;
+                        actual = new Texture2D(width, height, format, false);
+                        RenderTexture dummy = null;
+
+                        if (settings.UseHDR)
+                        {
+                            desc.graphicsFormat = SystemInfo.GetGraphicsFormat(DefaultFormat.LDR);
+                            dummy = RenderTexture.GetTemporary(desc);
+                            UnityEngine.Graphics.Blit(rt, dummy);
+                        }
+                        else
+                            RenderTexture.active = rt;
+
 						actual.ReadPixels(new Rect(0, 0, width, height), 0, 0);
 						RenderTexture.active = null;
+
+                        if (dummy != null)
+                            RenderTexture.ReleaseTemporary(dummy);
 
 						actual.Apply();
 
