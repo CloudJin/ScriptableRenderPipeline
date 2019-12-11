@@ -66,11 +66,11 @@ namespace UnityEngine.Rendering.HighDefinition
             // and we don't support Min samplers either. So we are forced to perform 4x loads.
             for (int i = 1; i < info.mipLevelCount; i++)
             {
-                Vector2Int dstSize   = info.mipLevelSizes[i];
+                Vector2Int dstSize = info.mipLevelSizes[i];
                 Vector2Int dstOffset = info.mipLevelOffsets[i];
-                Vector2Int srcSize   = info.mipLevelSizes[i - 1];
+                Vector2Int srcSize = info.mipLevelSizes[i - 1];
                 Vector2Int srcOffset = info.mipLevelOffsets[i - 1];
-                Vector2Int srcLimit  = srcOffset + srcSize - Vector2Int.one;
+                Vector2Int srcLimit = srcOffset + srcSize - Vector2Int.one;
 
                 m_SrcOffset[0] = srcOffset.x;
                 m_SrcOffset[1] = srcOffset.y;
@@ -82,9 +82,9 @@ namespace UnityEngine.Rendering.HighDefinition
                 m_DstOffset[2] = 0;
                 m_DstOffset[3] = 0;
 
-                cmd.SetComputeIntParams(   cs,         HDShaderIDs._SrcOffsetAndLimit, m_SrcOffset);
-                cmd.SetComputeIntParams(   cs,         HDShaderIDs._DstOffset,         m_DstOffset);
-                cmd.SetComputeTextureParam(cs, kernel, HDShaderIDs._DepthMipChain,     texture);
+                cmd.SetComputeIntParams(cs, HDShaderIDs._SrcOffsetAndLimit, m_SrcOffset);
+                cmd.SetComputeIntParams(cs, HDShaderIDs._DstOffset, m_DstOffset);
+                cmd.SetComputeTextureParam(cs, kernel, HDShaderIDs._DepthMipChain, texture);
 
                 cmd.DispatchCompute(cs, kernel, HDUtils.DivRoundUp(dstSize.x, 8), HDUtils.DivRoundUp(dstSize.y, 8), texture.volumeDepth);
             }

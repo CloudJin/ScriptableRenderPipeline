@@ -975,7 +975,7 @@ namespace UnityEngine.Rendering.HighDefinition
                 // Off screen rendering is disabled for most of the frame by default.
                 cmd.SetGlobalInt(HDShaderIDs._OffScreenRendering, 0);
                 cmd.SetGlobalFloat(HDShaderIDs._ReplaceDiffuseForIndirect, hdCamera.frameSettings.IsEnabled(FrameSettingsField.ReplaceDiffuseForIndirect) ? 1.0f : 0.0f);
-                cmd.SetGlobalInt(HDShaderIDs._EnableSkyReflection, hdCamera.frameSettings.IsEnabled(FrameSettingsField.SkyReflection) ? 1 : 0);
+                cmd.SetGlobalInt(HDShaderIDs._EnableSkyLighting, hdCamera.frameSettings.IsEnabled(FrameSettingsField.SkyLighting) ? 1 : 0);
 
                 m_SkyManager.SetGlobalSkyData(cmd, hdCamera);
 
@@ -992,6 +992,26 @@ namespace UnityEngine.Rendering.HighDefinition
         {
             if (!m_IsDepthBufferCopyValid)
             {
+                using (new ProfilingSample(cmd, "Debug depth texture", CustomSamplerId.CopyDepthBuffer.GetSampler()))
+                {
+                    // TODO: maybe we don't actually need the top MIP level?
+                    // That way we could avoid making the copy, and build the MIP hierarchy directly.
+                    // The downside is that our SSR tracing accuracy would decrease a little bit.
+                    // But since we never render SSR at full resolution, this may be acceptable.
+
+                    // TODO: reading the depth buffer with a compute shader will cause it to decompress in place.
+                    // On console, to preserve the depth test performance, we must NOT decompress the 'm_CameraDepthStencilBuffer' in place.
+                    // We should call decompressDepthSurfaceToCopy() and decompress it to 'm_CameraDepthBufferMipChain'.
+                    int width = m_SharedRTManager.m_CameraDepthBufferMipChainOCDebug.rt.width;
+                    int height = m_SharedRTManager.m_CameraDepthBufferMipChainOCDebug.rt.height;
+                    m_GPUCopy.SampleCopyChannel_xyzw2x(cmd,
+                        m_SharedRTManager.GetDepthTextureOC(),
+                        m_SharedRTManager.m_CameraDepthBufferMipChainOCDebug,
+                        new Rendering.RectInt(0, 0, width, height));
+                    // Depth texture is now ready, bind it.
+                    //cmd.SetGlobalTexture(HDShaderIDs._CameraDepthTexture, m_SharedRTManager.m_CameraDepthBufferMipChainOC);
+                }
+
                 using (new ProfilingSample(cmd, "Copy depth buffer", CustomSamplerId.CopyDepthBuffer.GetSampler()))
                 {
                     // TODO: maybe we don't actually need the top MIP level?
@@ -1231,6 +1251,9 @@ namespace UnityEngine.Rendering.HighDefinition
 
                     VFXManager.PrepareCamera(camera);
 
+
+                    
+
                     // Reset pooled variables
                     cameraSettings.Clear();
                     cameraPositionSettings.Clear();
@@ -1246,6 +1269,22 @@ namespace UnityEngine.Rendering.HighDefinition
                             out var additionalCameraData,
                             out var hdCamera,
                             out var cullingParameters);
+
+                    ComputeShader cs = defaultResources?.shaders.hiZBufferComputeShader;
+                    cs.name = "HiZBufferOcclusionBuffer";
+                    renderContext.AssignHiZBufferComputeShader(cs);
+                    if (camera.cameraType == CameraType.Game)
+                    {
+                        cs.SetVector(HDShaderIDs._ZBufferParams, hdCamera.zBufferParams);
+                        if (m_SharedRTManager.GetDepthBufferMipChainInfoRef().OffsetBufferNeedUpdate())
+                        {
+                            // for now, only support one camera
+                            RenderTexture rt = m_SharedRTManager.GetDepthTextureOC().rt;
+                            renderContext.AssignDepthPyramidTexture(rt, camera.pixelWidth, camera.pixelHeight, m_SharedRTManager.GetDepthBufferMipChainInfo().mipLevelCount);
+                        }
+                    }
+                    
+                    //cs.SetTexture(0, "_DepthMipChain", m_SharedRTManager.GetDepthTextureOC());
 
                     // Note: In case of a custom render, we have false here and 'TryCull' is not executed
                     if (!skipRequest)
@@ -1799,7 +1838,7 @@ namespace UnityEngine.Rendering.HighDefinition
                 using (new ProfilingSample(null, "DBufferPrepareDrawData", CustomSamplerId.DBufferPrepareDrawData.GetSampler()))
                 {
                     // TODO: update singleton with DecalCullResults
-                    DecalSystem.instance.CurrentCamera = hdCamera.camera; // Singletons are extremely dangerous...
+                    DecalSystem.instance.CurrentCamera = hdCamera.camera;
                     DecalSystem.instance.LoadCullResults(decalCullingResults);
                     DecalSystem.instance.UpdateCachedMaterialData();    // textures, alpha or fade distances could've changed
                     DecalSystem.instance.CreateDrawData();              // prepare data is separate from draw
@@ -1880,19 +1919,18 @@ namespace UnityEngine.Rendering.HighDefinition
                 return;
             }
 
-            hdCamera.xr.StartSinglePass(cmd, camera, renderContext);
-
-            ClearBuffers(hdCamera, cmd);
+			hdCamera.xr.StartSinglePass(cmd, camera, renderContext);            ClearBuffers(hdCamera, cmd);
 
             // Render XR occlusion mesh to depth buffer early in the frame to improve performance
             if (hdCamera.xr.enabled && m_Asset.currentPlatformRenderPipelineSettings.xrSettings.occlusionMesh)
             {
-                hdCamera.xr.StopSinglePass(cmd, camera, renderContext);
                 hdCamera.xr.RenderOcclusionMeshes(cmd, m_SharedRTManager.GetDepthStencilBuffer(hdCamera.frameSettings.IsEnabled(FrameSettingsField.MSAA)));
-                hdCamera.xr.StartSinglePass(cmd, camera, renderContext);
             }
 
+            
+
             // Bind the custom color/depth before the first custom pass
+
             if (hdCamera.frameSettings.IsEnabled(FrameSettingsField.CustomPass))
             {
                 cmd.SetGlobalTexture(HDShaderIDs._CustomColorTexture, m_CustomPassColorBuffer);
@@ -1921,10 +1959,6 @@ namespace UnityEngine.Rendering.HighDefinition
 
             // In both forward and deferred, everything opaque should have been rendered at this point so we can safely copy the depth buffer for later processing.
             GenerateDepthPyramid(hdCamera, cmd, FullScreenDebugMode.DepthPyramid);
-
-            // Send all the geometry graphics buffer to client systems if required (must be done after the pyramid and before the transparent depth pre-pass)
-            SendGeometryGraphicsBuffers(cmd, hdCamera);
-
             // Depth texture is now ready, bind it (Depth buffer could have been bind before if DBuffer is enable)
             cmd.SetGlobalTexture(HDShaderIDs._CameraDepthTexture, m_SharedRTManager.GetDepthTexture());
 
@@ -2252,8 +2286,8 @@ namespace UnityEngine.Rendering.HighDefinition
             // XR mirror view and blit do device
             hdCamera.xr.EndCamera(cmd, hdCamera, renderContext);
 
-            // Send all the color graphics buffer to client systems if required.
-            SendColorGraphicsBuffer(cmd, hdCamera);
+            // Send all required graphics buffer to client systems.
+            SendGraphicsBuffers(cmd, hdCamera);
 
             // Due to our RT handle system we don't write into the backbuffer depth buffer (as our depth buffer can be bigger than the one provided)
             // So we need to do a copy of the corresponding part of RT depth buffer in the target depth buffer in various situation:
@@ -2544,7 +2578,6 @@ namespace UnityEngine.Rendering.HighDefinition
 
             // We need to set the ambient probe here because it's passed down to objects during the culling process.
             skyManager.SetupAmbientProbe(hdCamera);
-
             using (new ProfilingSample(null, "CullResults.Cull", CustomSamplerId.CullResultsCull.GetSampler()))
                 cullingResults.cullingResults = renderContext.Cull(ref cullingParams);
 
@@ -3715,6 +3748,29 @@ namespace UnityEngine.Rendering.HighDefinition
             {
                 m_MipGenerator.RenderMinDepthPyramid(cmd, m_SharedRTManager.GetDepthTexture(), m_SharedRTManager.GetDepthBufferMipChainInfo());
             }
+            if (hdCamera.camera.cameraType == CameraType.Game)
+            {
+                using (new ProfilingSample(cmd, "Copy depth buffer mipmap chain", CustomSamplerId.CopyDepthBuffer.GetSampler()))
+                {
+                    // TODO: maybe we don't actually need the top MIP level?
+                    // That way we could avoid making the copy, and build the MIP hierarchy directly.
+                    // The downside is that our SSR tracing accuracy would decrease a little bit.
+                    // But since we never render SSR at full resolution, this may be acceptable.
+
+                    // TODO: reading the depth buffer with a compute shader will cause it to decompress in place.
+                    // On console, to preserve the depth test performance, we must NOT decompress the 'm_CameraDepthStencilBuffer' in place.
+                    // We should call decompressDepthSurfaceToCopy() and decompress it to 'm_CameraDepthBufferMipChain'.
+                    int width = m_SharedRTManager.GetDepthTexture().rt.width;
+                    int height = m_SharedRTManager.GetDepthTexture().rt.height;
+                    m_GPUCopy.SampleCopyChannel_xyzw2x(cmd,
+                        m_SharedRTManager.GetDepthTexture(),
+                        m_SharedRTManager.GetDepthTextureOC(),
+                        new Rendering.RectInt(0, 0, width, height));
+                    // Depth texture is now ready, bind it.
+                    //cmd.SetGlobalTexture(HDShaderIDs._CameraDepthTexture, m_SharedRTManager.m_CameraDepthBufferMipChainOC);
+                }
+            }
+            
 
             float scaleX = hdCamera.actualWidth / (float)m_SharedRTManager.GetDepthTexture().rt.width;
             float scaleY = hdCamera.actualHeight / (float)m_SharedRTManager.GetDepthTexture().rt.height;
@@ -4121,7 +4177,7 @@ namespace UnityEngine.Rendering.HighDefinition
                     using (new ProfilingSample(cmd, "Clear GBuffer", CustomSamplerId.ClearGBuffer.GetSampler()))
                     {
                         // We still clear in case of debug mode or on demand
-                        if (m_CurrentDebugDisplaySettings.IsDebugDisplayEnabled() || hdCamera.frameSettings.IsEnabled(FrameSettingsField.ClearGBuffers))
+                        //if (m_CurrentDebugDisplaySettings.IsDebugDisplayEnabled() || hdCamera.frameSettings.IsEnabled(FrameSettingsField.ClearGBuffers))
                         {
                             CoreUtils.SetRenderTarget(cmd, m_GbufferManager.GetBuffersRTI(), m_SharedRTManager.GetDepthStencilBuffer(), ClearFlag.Color, Color.clear);
                         }
@@ -4208,7 +4264,7 @@ namespace UnityEngine.Rendering.HighDefinition
             }
         }
 
-        void SendGeometryGraphicsBuffers(CommandBuffer cmd, HDCamera hdCamera)
+        void SendGraphicsBuffers(CommandBuffer cmd, HDCamera hdCamera)
         {
             bool needNormalBuffer = false;
             Texture normalBuffer = null;
@@ -4270,12 +4326,6 @@ namespace UnityEngine.Rendering.HighDefinition
             {
                 VFXManager.SetCameraBuffer(hdCamera.camera, VFXCameraBufferTypes.Normal, normalBuffer, 0, 0, hdCamera.actualWidth, hdCamera.actualHeight);
             }
-        }
-
-        void SendColorGraphicsBuffer(CommandBuffer cmd, HDCamera hdCamera)
-        {
-            // Figure out which client systems need which buffers
-            VFXCameraBufferTypes neededVFXBuffers = VFXManager.IsCameraBufferNeeded(hdCamera.camera);
 
             if ((neededVFXBuffers & VFXCameraBufferTypes.Color) != 0)
             {
