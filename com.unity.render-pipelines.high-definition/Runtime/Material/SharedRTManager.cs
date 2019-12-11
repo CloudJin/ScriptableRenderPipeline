@@ -9,6 +9,8 @@ namespace UnityEngine.Rendering.HighDefinition
         RTHandle m_MotionVectorsRT = null;
         RTHandle m_CameraDepthStencilBuffer = null;
         RTHandle m_CameraDepthBufferMipChain;
+        RTHandle m_CameraDepthBufferMipChainOC;
+        public RTHandle m_CameraDepthBufferMipChainOCDebug;
         RTHandle m_CameraStencilBufferCopy;
         RTHandle m_CameraHalfResDepthBuffer = null;
         HDUtils.PackedMipChainInfo m_CameraDepthBufferMipChainInfo; // This is metadata
@@ -59,8 +61,10 @@ namespace UnityEngine.Rendering.HighDefinition
             m_CameraDepthBufferMipChainInfo = new HDUtils.PackedMipChainInfo();
             m_CameraDepthBufferMipChainInfo.Allocate();
             m_CameraDepthBufferMipChain = RTHandles.Alloc(ComputeDepthBufferMipChainSize, TextureXR.slices, colorFormat: GraphicsFormat.R32_SFloat, dimension: TextureXR.dimension, enableRandomWrite: true, useDynamicScale: true, name: "CameraDepthBufferMipChain");
+            m_CameraDepthBufferMipChainOC = RTHandles.Alloc(ComputeDepthBufferMipChainSize, TextureXR.slices, colorFormat: GraphicsFormat.R32_SFloat, dimension: TextureXR.dimension, enableRandomWrite: true, useDynamicScale: true, name: "CameraDepthBufferMipChainOC");
+            m_CameraDepthBufferMipChainOCDebug = RTHandles.Alloc(ComputeDepthBufferMipChainSize, TextureXR.slices, colorFormat: GraphicsFormat.R32_SFloat, dimension: TextureXR.dimension, enableRandomWrite: true, useDynamicScale: true, name: "CameraDepthBufferMipChainDebug");
 
-            if(settings.lowresTransparentSettings.enabled)
+            if (settings.lowresTransparentSettings.enabled)
             {
                 // Create the half res depth buffer used for low resolution transparency
                 m_CameraHalfResDepthBuffer = RTHandles.Alloc(Vector2.one * 0.5f, TextureXR.slices, DepthBits.Depth32, dimension: TextureXR.dimension, useDynamicScale: true, name: "LowResDepthBuffer");
@@ -216,6 +220,11 @@ namespace UnityEngine.Rendering.HighDefinition
             }
         }
 
+        public RTHandle GetDepthTextureOC()
+        {
+            return m_CameraDepthBufferMipChainOC;
+        }
+
         public RTHandle GetDepthValuesTexture()
         {
             Debug.Assert(m_MSAASupported);
@@ -243,6 +252,11 @@ namespace UnityEngine.Rendering.HighDefinition
             return m_CameraDepthBufferMipChainInfo;
         }
 
+        public ref HDUtils.PackedMipChainInfo GetDepthBufferMipChainInfoRef()
+        {
+            return ref m_CameraDepthBufferMipChainInfo;
+        }
+
         public void Build(HDRenderPipelineAsset hdAsset)
         {
         }
@@ -265,6 +279,8 @@ namespace UnityEngine.Rendering.HighDefinition
 
             RTHandles.Release(m_CameraDepthStencilBuffer);
             RTHandles.Release(m_CameraDepthBufferMipChain);
+            RTHandles.Release(m_CameraDepthBufferMipChainOC);
+            RTHandles.Release(m_CameraDepthBufferMipChainOCDebug);
             RTHandles.Release(m_CameraStencilBufferCopy);
             RTHandles.Release(m_CameraHalfResDepthBuffer);
 

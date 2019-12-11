@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: HDRenderPipelineEditorResources
   m_EditorClassIdentifier: 
   m_Version: 0
-  defaultScene: {fileID: 4893056312182120781, guid: bc694eebc7afe0b42b02d231420b217a,
+  defaultScene: {fileID: 3628837357921210760, guid: bc694eebc7afe0b42b02d231420b217a,
     type: 3}
   defaultDXRScene: {fileID: 4893056312182120781, guid: a1dfdae16e0448542a6124642d4c13e9,
     type: 3}
