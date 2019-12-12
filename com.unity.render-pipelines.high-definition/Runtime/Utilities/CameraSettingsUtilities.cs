@@ -25,6 +25,7 @@ namespace UnityEngine.Rendering.HighDefinition
             cam.projectionMatrix = settings.frustum.GetUsedProjectionMatrix();
             // Culling
             cam.useOcclusionCulling = settings.culling.useOcclusionCulling;
+            cam.useGpuOcclusionCulling = settings.culling.useGpuOcclusionCulling;
             cam.cullingMask = settings.culling.cullingMask;
             cam.overrideSceneCullingMask = settings.culling.sceneCullingMaskOverride;
             // Buffer clearing

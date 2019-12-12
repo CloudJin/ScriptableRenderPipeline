@@ -24,7 +24,8 @@ namespace UnityEngine.Rendering.HighDefinition
         customRenderingSettings = 1 << 15,
         flipYMode = 1 << 16,
         frameSettings = 1 << 17,
-        probeLayerMask = 1 << 18
+        probeLayerMask = 1 << 18,
+        cullingUseGpuOcclusionCulling = 1 << 19,
     }
 
     [Serializable]
@@ -150,11 +151,13 @@ namespace UnityEngine.Rendering.HighDefinition
             {
                 cullingMask = -1,
                 useOcclusionCulling = true,
+                useGpuOcclusionCulling = true,
                 sceneCullingMaskOverride = 0
             };
 
             /// <summary>True when occlusion culling will be performed during rendering, false otherwise.</summary>
             public bool useOcclusionCulling;
+            public bool useGpuOcclusionCulling;
             /// <summary>The mask for visible objects.</summary>
             public LayerMask cullingMask;
             /// <summary>Scene culling mask override.</summary>
@@ -181,6 +184,7 @@ namespace UnityEngine.Rendering.HighDefinition
             var settings = @default;
             settings.culling.cullingMask = hdCamera.camera.cullingMask;
             settings.culling.useOcclusionCulling = hdCamera.camera.useOcclusionCulling;
+            settings.culling.useGpuOcclusionCulling = hdCamera.camera.useGpuOcclusionCulling;
             settings.culling.sceneCullingMaskOverride = HDUtils.GetSceneCullingMaskFromCamera(hdCamera.camera);
             settings.frustum.aspect = hdCamera.camera.aspect;
             settings.frustum.farClipPlane = hdCamera.camera.farClipPlane;

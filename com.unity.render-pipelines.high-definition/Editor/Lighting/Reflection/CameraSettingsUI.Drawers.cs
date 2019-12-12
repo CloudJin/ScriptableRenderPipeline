@@ -20,7 +20,8 @@ namespace UnityEditor.Rendering.HighDefinition
                 | CameraSettingsFields.volumesLayerMask;
             const CameraSettingsFields cullingFields = CameraSettingsFields.cullingCullingMask
                 | CameraSettingsFields.cullingInvertFaceCulling
-                | CameraSettingsFields.cullingUseOcclusionCulling;
+                | CameraSettingsFields.cullingUseOcclusionCulling
+                | CameraSettingsFields.cullingUseGpuOcclusionCulling;
             const CameraSettingsFields frustumFields = CameraSettingsFields.frustumAspect
                 | CameraSettingsFields.frustumFarClipPlane
                 | CameraSettingsFields.frustumMode
@@ -48,6 +49,7 @@ namespace UnityEditor.Rendering.HighDefinition
             if ((displayedFields.camera & cullingFields) != 0)
             {
                 PropertyFieldWithFlagToggleIfDisplayed(CameraSettingsFields.cullingUseOcclusionCulling, serialized.cullingUseOcclusionCulling, EditorGUIUtility.TrTextContent("Use Occlusion Culling"), @override.camera, displayedFields.camera, overridableFields.camera);
+                PropertyFieldWithFlagToggleIfDisplayed(CameraSettingsFields.cullingUseGpuOcclusionCulling, serialized.cullingUseGpuOcclusionCulling, EditorGUIUtility.TrTextContent("Use GPU Occlusion Culling"), @override.camera, displayedFields.camera, overridableFields.camera);
                 PropertyFieldWithFlagToggleIfDisplayed(CameraSettingsFields.cullingCullingMask, serialized.cullingCullingMask, EditorGUIUtility.TrTextContent("Culling Mask"), @override.camera, displayedFields.camera, overridableFields.camera);
                 PropertyFieldWithFlagToggleIfDisplayed(CameraSettingsFields.cullingInvertFaceCulling, serialized.cullingCullingMask, EditorGUIUtility.TrTextContent("Invert Backface Culling"), @override.camera, displayedFields.camera, overridableFields.camera);
                 EditorGUILayout.Space();

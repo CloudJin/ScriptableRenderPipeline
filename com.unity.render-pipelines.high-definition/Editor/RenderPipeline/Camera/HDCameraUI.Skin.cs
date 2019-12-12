@@ -20,6 +20,7 @@ namespace UnityEditor.Rendering.HighDefinition
         static readonly GUIContent volumeLayerMaskContent = EditorGUIUtility.TrTextContent("Volume Layer Mask");
         static readonly GUIContent volumeAnchorOverrideContent = EditorGUIUtility.TrTextContent("Volume Anchor Override");
         static readonly GUIContent occlusionCullingContent = EditorGUIUtility.TrTextContent("Occlusion Culling");
+        static readonly GUIContent gpuOcclusionCullingContent = EditorGUIUtility.TrTextContent("GPU Occlusion Culling");
 
         static readonly GUIContent projectionContent = EditorGUIUtility.TrTextContent("Projection", "How the Camera renders perspective.\n\nChoose Perspective to render objects with perspective.\n\nChoose Orthographic to render objects uniformly, with no sense of perspective.");
         static readonly GUIContent sizeContent = EditorGUIUtility.TrTextContent("Size");

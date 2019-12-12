@@ -35,6 +35,7 @@ namespace UnityEditor.Rendering.HighDefinition
         internal SerializedProperty frustumFieldOfView;
         internal SerializedProperty frustumProjectionMatrix;
         internal SerializedProperty cullingUseOcclusionCulling;
+        internal SerializedProperty cullingUseGpuOcclusionCulling;
         internal SerializedProperty cullingCullingMask;
         internal SerializedProperty cullingInvertFaceCulling;
         internal SerializedProperty customRenderingSettings;
@@ -62,6 +63,7 @@ namespace UnityEditor.Rendering.HighDefinition
             frustumFieldOfView = root.FindPropertyRelative("frustum.fieldOfView");
             frustumProjectionMatrix = root.FindPropertyRelative("frustum.projectionMatrix");
             cullingUseOcclusionCulling = root.FindPropertyRelative("culling.useOcclusionCulling");
+            cullingUseGpuOcclusionCulling = root.FindPropertyRelative("culling.useGpuOcclusionCulling");
             cullingCullingMask = root.FindPropertyRelative("culling.cullingMask");
             cullingInvertFaceCulling = root.FindPropertyRelative("invertFaceCulling");
             customRenderingSettings = root.FindPropertyRelative("customRenderingSettings");

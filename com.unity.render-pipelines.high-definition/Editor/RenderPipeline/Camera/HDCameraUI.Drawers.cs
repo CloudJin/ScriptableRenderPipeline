@@ -111,7 +111,8 @@ namespace UnityEditor.Rendering.HighDefinition
                 Drawer_FieldVolumeLayerMask,
                 Drawer_FieldVolumeAnchorOverride,
                 (p, owner) => EditorGUILayout.PropertyField(p.probeLayerMask, probeLayerMaskContent),
-                Drawer_FieldOcclusionCulling
+                Drawer_FieldOcclusionCulling,
+                Drawer_FieldGpuOcclusionCulling
                 ),
             CED.space,
             CED.Group(
@@ -483,6 +484,11 @@ namespace UnityEditor.Rendering.HighDefinition
         static void Drawer_FieldOcclusionCulling(SerializedHDCamera p, Editor owner)
         {
             EditorGUILayout.PropertyField(p.baseCameraSettings.occlusionCulling, occlusionCullingContent);
+        }
+
+        static void Drawer_FieldGpuOcclusionCulling(SerializedHDCamera p, Editor owner)
+        {
+            EditorGUILayout.PropertyField(p.baseCameraSettings.gpuOcclusionCulling, gpuOcclusionCullingContent);
         }
 
         static void Drawer_CameraWarnings(SerializedHDCamera p, Editor owner)
