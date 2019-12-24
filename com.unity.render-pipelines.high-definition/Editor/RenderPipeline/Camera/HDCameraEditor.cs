@@ -53,7 +53,6 @@ namespace UnityEditor.Rendering.HighDefinition
         RenderTexture m_PreviewTexture;
         Camera m_PreviewCamera;
         HDAdditionalCameraData m_PreviewAdditionalCameraData;
-
         void OnEnable()
         {
             m_SerializedCamera = new SerializedHDCamera(serializedObject);
@@ -83,6 +82,7 @@ namespace UnityEditor.Rendering.HighDefinition
 
             HDCameraUI.Inspector.Draw(m_SerializedCamera, this);
 
+            m_dstObj = (GameObject)EditorGUILayout.ObjectField("Debug Renderer", m_dstObj, typeof(GameObject), true);
             m_SerializedCamera.Apply();
         }
 
@@ -99,5 +99,6 @@ namespace UnityEditor.Rendering.HighDefinition
             }
             return m_PreviewTexture;
         }
+
     }
 }

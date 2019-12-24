@@ -11,7 +11,11 @@ struct InstanceData
 	float3 boundsExtents;        // 6
 };
 
-
+struct DebugData
+{
+	float4 mipmap;
+	float4 minMaxXY;
+};
 //--------------------------------------------------------------------------------------
 // Pragmas
 //--------------------------------------------------------------------------------------
@@ -54,6 +58,7 @@ StructuredBuffer<uint4> _MipmapOffset;
 RWStructuredBuffer<uint> _IsVisibleBuffer;
 
 RWStructuredBuffer<float3> _debugBuffer;
+RWStructuredBuffer<DebugData> _debugBufferEx;
 //--------------------------------------------------------------------------------------
 // Kernels & Functions
 //--------------------------------------------------------------------------------------
@@ -116,6 +121,10 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 		depth.z = _DepthMipChain[COORD_TEXTURE2D_X(corner2)] - 0.000015;
 		depth.w = _DepthMipChain[COORD_TEXTURE2D_X(corner3)] - 0.000015;
 		HIZdepth = min(min(depth.x, depth.y), min(depth.z, depth.w));  
+		
+		_debugBufferEx[id].mipmap.x = mip;
+		_debugBufferEx[id].minMaxXY.xy = minXY;
+		_debugBufferEx[id].minMaxXY.zw = maxXY;
 	}
 	else
 	{

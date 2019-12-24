@@ -16,9 +16,60 @@ namespace UnityEditor.Rendering.HighDefinition
             if (!UnityEditor.Rendering.CameraEditorUtils.IsViewPortRectValidToRender(c.rect))
                 return;
 
-            SceneViewOverlay_Window(EditorGUIUtility.TrTextContent("Camera Preview"), OnOverlayGUI, -100, target);
+            DrawDebugView((RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager.m_CameraDepthBufferMipChainOCDebug);
 
+            SceneViewOverlay_Window(EditorGUIUtility.TrTextContent("Camera Preview"), OnOverlayGUI, -100, target);
             UnityEditor.CameraEditorUtils.HandleFrustum(c, c.GetInstanceID());
+        }
+
+
+        private GameObject m_dstObj;
+        RenderTexture m_depthTexture;
+        RenderTexture m_dstTexture;
+        ComputeBuffer m_debugBuffer;
+        struct DebugInfo
+        {
+            Vector4 mipmap;
+            Vector4 minMaxXY;
+        };
+       
+        void DrawDebugView(RenderTexture renderTexture)
+        {
+            if (renderTexture == null)
+                return;
+
+            if (m_dstTexture == null)
+                m_dstTexture = new RenderTexture(renderTexture.width, renderTexture.height, 0, RenderTextureFormat.RFloat);
+            Graphics.CopyTexture(renderTexture, 0, m_dstTexture, 0);
+            Handles.BeginGUI();
+            var label = $"test.";
+            //Rect cameraRect = GUILayoutUtility.GetRect(64, 64);
+            Rect labelRect = new Rect(0, 0, 100, 100);
+            EditorGUI.DropShadowLabel(labelRect, label, EditorStyles.wordWrappedLabel);
+
+            Rect cameraRect = new Rect(0, 20, 128, 128);
+            var texCoords = new Rect(0, 0, 1, 1);
+            GUI.DrawTextureWithTexCoords(cameraRect, m_dstTexture, texCoords, false);
+
+            
+            //GUI.DrawTexture(cameraRect, m_dstTexture, ScaleMode.ScaleAndCrop, true, 0, Color.red, 0, 0);
+            //EditorGUI.DrawPreviewTexture(cameraRect, renderTexture);
+            Handles.EndGUI();
+        }
+
+        void FetchDebugInfo()
+        {
+            if (m_dstObj == null)
+                return;
+
+
+
+            HDRenderPipeline pipeline = (RenderPipelineManager.currentPipeline as HDRenderPipeline);
+            HiZBufferDebugInfo info;
+            pipeline.QueryHiZBufferDebugInfo(m_dstObj.name, out info);
+
+//             cs.SetBuffer(0, "_debugBufferEx", m_debugBuffer);
+            //m_debugBuffer.GetData();
         }
 
         void OnOverlayGUI(Object target, SceneView sceneView)
@@ -39,7 +90,6 @@ namespace UnityEditor.Rendering.HighDefinition
             var previewTexture = GetPreviewTextureWithSize((int)previewSize.x, (int)previewSize.y);
             m_PreviewCamera.targetTexture = previewTexture;
             m_PreviewCamera.pixelRect = new Rect(0, 0, previewSize.x, previewSize.y);
-
             return m_PreviewCamera;
         }
 
