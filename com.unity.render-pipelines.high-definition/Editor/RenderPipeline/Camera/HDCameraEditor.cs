@@ -82,7 +82,14 @@ namespace UnityEditor.Rendering.HighDefinition
 
             HDCameraUI.Inspector.Draw(m_SerializedCamera, this);
 
-            m_dstObj = (GameObject)EditorGUILayout.ObjectField("Debug Renderer", m_dstObj, typeof(GameObject), true);
+            EditorGUI.BeginChangeCheck();
+            var obj = (GameObject)EditorGUILayout.ObjectField("Debug Renderer", m_dstObj, typeof(GameObject), true);
+            if (m_dstObj != obj)
+            {
+                m_dstObj = obj;
+                EditorUtility.SetDirty(target);
+            }
+            EditorGUI.EndChangeCheck();
             m_SerializedCamera.Apply();
         }
 

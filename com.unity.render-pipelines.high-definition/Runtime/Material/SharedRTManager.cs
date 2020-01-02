@@ -14,6 +14,7 @@ namespace UnityEngine.Rendering.HighDefinition
         RTHandle m_CameraStencilBufferCopy;
         RTHandle m_CameraHalfResDepthBuffer = null;
         HDUtils.PackedMipChainInfo m_CameraDepthBufferMipChainInfo; // This is metadata
+        HDUtils.PackedMipChainInfo m_CameraDepthBufferMipChainInfoCopy;
 
         // The two render targets that should be used when we render in MSAA
         RTHandle m_NormalMSAART = null;
@@ -60,9 +61,23 @@ namespace UnityEngine.Rendering.HighDefinition
             // Create the mip chain buffer
             m_CameraDepthBufferMipChainInfo = new HDUtils.PackedMipChainInfo();
             m_CameraDepthBufferMipChainInfo.Allocate();
+            m_CameraDepthBufferMipChainInfoCopy = new HDUtils.PackedMipChainInfo();
+            m_CameraDepthBufferMipChainInfoCopy.Allocate();
             m_CameraDepthBufferMipChain = RTHandles.Alloc(ComputeDepthBufferMipChainSize, TextureXR.slices, colorFormat: GraphicsFormat.R32_SFloat, dimension: TextureXR.dimension, enableRandomWrite: true, useDynamicScale: true, name: "CameraDepthBufferMipChain");
-            m_CameraDepthBufferMipChainOC = RTHandles.Alloc(ComputeDepthBufferMipChainSize, TextureXR.slices, colorFormat: GraphicsFormat.R32_SFloat, dimension: TextureXR.dimension, enableRandomWrite: true, useDynamicScale: true, name: "CameraDepthBufferMipChainOC");
-            m_CameraDepthBufferMipChainOCDebug = RTHandles.Alloc(ComputeDepthBufferMipChainSize, TextureXR.slices, colorFormat: GraphicsFormat.R32_SFloat, dimension: TextureXR.dimension, enableRandomWrite: true, useDynamicScale: true, name: "CameraDepthBufferMipChainDebug");
+            m_CameraDepthBufferMipChainOC = RTHandles.Alloc(ComputeDepthBufferMipChainSizeEx,
+                TextureXR.slices,
+                colorFormat: GraphicsFormat.R32_SFloat,
+                filterMode: FilterMode.Point,
+                dimension: TextureXR.dimension,
+                enableRandomWrite: true,
+                name: "CameraDepthBufferMipChainOC");
+            m_CameraDepthBufferMipChainOCDebug = RTHandles.Alloc(ComputeDepthBufferMipChainSizeEx,
+                TextureXR.slices,
+                colorFormat: GraphicsFormat.R32_SFloat,
+                filterMode: FilterMode.Point,
+                dimension: TextureXR.dimension,
+                enableRandomWrite: true,
+                name: "CameraDepthBufferMipChainDebug");
 
             if (settings.lowresTransparentSettings.enabled)
             {
@@ -247,6 +262,12 @@ namespace UnityEngine.Rendering.HighDefinition
             return m_CameraDepthBufferMipChainInfo.textureSize;
         }
 
+        public Vector2Int ComputeDepthBufferMipChainSizeEx(Vector2Int screenSize)
+        {
+            m_CameraDepthBufferMipChainInfoCopy.ComputePackedMipChainInfo(screenSize);
+            return m_CameraDepthBufferMipChainInfoCopy.textureSize;
+        }
+
         public HDUtils.PackedMipChainInfo GetDepthBufferMipChainInfo()
         {
             return m_CameraDepthBufferMipChainInfo;
@@ -254,7 +275,7 @@ namespace UnityEngine.Rendering.HighDefinition
 
         public ref HDUtils.PackedMipChainInfo GetDepthBufferMipChainInfoRef()
         {
-            return ref m_CameraDepthBufferMipChainInfo;
+            return ref m_CameraDepthBufferMipChainInfoCopy;
         }
 
         public void Build(HDRenderPipelineAsset hdAsset)

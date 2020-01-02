@@ -52,6 +52,7 @@ namespace UnityEditor.ShaderGraph.Drawing
             // vertex lit previews if that is chosen in the player settings)
             camera.renderingPath = RenderingPath.Forward;
             camera.useOcclusionCulling = false;
+            camera.useGpuOcclusionCulling = false;
             camera.scene = m_Scene;
 
             var l0 = CreateLight();

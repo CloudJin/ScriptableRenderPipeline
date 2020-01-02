@@ -14,6 +14,7 @@ struct InstanceData
 struct DebugData
 {
 	float4 mipmap;
+	float4 mipmapOffsetSize;
 	float4 minMaxXY;
 };
 //--------------------------------------------------------------------------------------
@@ -40,7 +41,7 @@ CBUFFER_START(cb)
     uint _ShouldFrustumCull;
     uint _ShouldOcclusionCull;
 
-    float2 _HiZTextureSize;
+    float2 _ViewportSize;
     float3 _CamPosition;
     
     float4x4 _UNITY_MATRIX_MVP;
@@ -82,10 +83,12 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
     // Change it to 0 - 1 range 
     float2 minXY = float2(clipMinX, clipMinY) * 0.5 + 0.5;
     float2 maxXY = float2(clipMaxX, clipMaxY) * 0.5 + 0.5;
-    
+    minXY = clamp(minXY, 0, 1);
+	maxXY = clamp(maxXY, 0, 1);
+	
     // Calculate hi-Z buffer mip
-    int2 size = (maxXY - minXY) * _HiZTextureSize.xy;
-    float mip = ceil(log2(max(size.x, size.y)));
+    int2 size = (maxXY - minXY) * _ViewportSize.xy;
+    float mip = ceil(log2(max(size.x, size.y))) - 1;
     mip = clamp(mip, 0, 10);
     
     // Texel footprint for the lower (finer-grained) level
@@ -104,8 +107,7 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 	float HIZdepth = 1;  
 	if (1)
 	{
-		minXY = clamp(minXY, 0, 1);
-		maxXY = clamp(maxXY, 0, 1);
+
 		// maxXY.y = 1 - minXY.y;
 		// minXY.y = 1 - maxXY.y;
 		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw);
@@ -121,10 +123,16 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 		depth.z = _DepthMipChain[COORD_TEXTURE2D_X(corner2)] - 0.000015;
 		depth.w = _DepthMipChain[COORD_TEXTURE2D_X(corner3)] - 0.000015;
 		HIZdepth = min(min(depth.x, depth.y), min(depth.z, depth.w));  
+		//HIZdepth = max(max(depth.x, depth.y), max(depth.z, depth.w));  
+		HIZdepth *= 2;
 		
 		_debugBufferEx[id].mipmap.x = mip;
+		_debugBufferEx[id].mipmap.y = 1 - clipMinZ;
+		_debugBufferEx[id].mipmap.z = HIZdepth;
 		_debugBufferEx[id].minMaxXY.xy = minXY;
 		_debugBufferEx[id].minMaxXY.zw = maxXY;
+		_debugBufferEx[id].mipmapOffsetSize.xy = offset;
+		_debugBufferEx[id].mipmapOffsetSize.zw = mipmapTextureSize;
 	}
 	else
 	{
@@ -160,7 +168,7 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 			yPos += stepY;    
 		}
 	}
-    return (1 - clipMinZ) >= HIZdepth * 2; // last is an epsilon
+    return (1 - clipMinZ) >= HIZdepth; // last is an epsilon
 }
 
 inline uint IsVisibleAfterFrustumCulling(float4 clipPos)
@@ -251,7 +259,7 @@ inline void CSMain (
 		float2 minXY = float2(clipMinX, clipMinY) * 0.5 + 0.5;   
 		float2 maxXY = float2(clipMaxX, clipMaxY) * 0.5 + 0.5;
 		 
-		 int2 size = (maxXY - minXY) * _HiZTextureSize.xy;
+		 int2 size = (maxXY - minXY) * _ViewportSize.xy;
 		float mip = ceil(log2(max(size.x, size.y)));
 		mip = clamp(mip, 0, 10);
 		//mip -= 1;

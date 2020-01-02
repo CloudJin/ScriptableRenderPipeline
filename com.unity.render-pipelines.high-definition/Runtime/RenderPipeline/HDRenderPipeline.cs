@@ -1276,14 +1276,16 @@ namespace UnityEngine.Rendering.HighDefinition
                     if (camera.cameraType == CameraType.Game)
                     {
                         cs.SetVector(HDShaderIDs._ZBufferParams, hdCamera.zBufferParams);
-                        if (m_SharedRTManager.GetDepthBufferMipChainInfoRef().OffsetBufferNeedUpdate())
-                        {
-                            // for now, only support one camera
-                            RenderTexture rt = m_SharedRTManager.GetDepthTextureOC().rt;
-                            renderContext.AssignDepthPyramidTexture(rt, camera.pixelWidth, camera.pixelHeight, m_SharedRTManager.GetDepthBufferMipChainInfo().mipLevelCount);
-                        }
+
                     }
-                    
+                    if (m_SharedRTManager.GetDepthBufferMipChainInfoRef().OffsetBufferNeedUpdate())
+                    {
+                        // for now, only support one camera
+                        RenderTexture rt = m_SharedRTManager.GetDepthTextureOC().rt;
+                        renderContext.AssignDepthPyramidTexture(rt, camera.pixelWidth, camera.pixelHeight, m_SharedRTManager.GetDepthBufferMipChainInfoRef().mipLevelCount);
+                    }
+
+
                     //cs.SetTexture(0, "_DepthMipChain", m_SharedRTManager.GetDepthTextureOC());
 
                     // Note: In case of a custom render, we have false here and 'TryCull' is not executed

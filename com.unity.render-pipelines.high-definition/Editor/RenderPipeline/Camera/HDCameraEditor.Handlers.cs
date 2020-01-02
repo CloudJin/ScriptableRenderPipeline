@@ -16,60 +16,117 @@ namespace UnityEditor.Rendering.HighDefinition
             if (!UnityEditor.Rendering.CameraEditorUtils.IsViewPortRectValidToRender(c.rect))
                 return;
 
-            DrawDebugView((RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager.m_CameraDepthBufferMipChainOCDebug);
+            DrawDebugView((RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager.GetDepthTextureOC());
 
             SceneViewOverlay_Window(EditorGUIUtility.TrTextContent("Camera Preview"), OnOverlayGUI, -100, target);
             UnityEditor.CameraEditorUtils.HandleFrustum(c, c.GetInstanceID());
         }
 
 
-        private GameObject m_dstObj;
+        static private GameObject m_dstObj;
         RenderTexture m_depthTexture;
         RenderTexture m_dstTexture;
-        ComputeBuffer m_debugBuffer;
+
+
         struct DebugInfo
         {
-            Vector4 mipmap;
-            Vector4 minMaxXY;
+            public Vector4 mipmap;
+            public Vector4 mipmapOffsetSize;
+            public Vector4 minMaxXY;
         };
-       
-        void DrawDebugView(RenderTexture renderTexture)
+        DebugInfo m_debugInfo;
+        public Material m_debugMaterial;
+        HDCamera m_hdCamera;
+        void DrawDebugView(RTHandle rtHandle)
         {
-            if (renderTexture == null)
+            RenderTexture renderTexture = rtHandle.rt;
+            if (renderTexture == null || m_dstObj == null)
                 return;
+            if (m_debugMaterial == null)
+                m_debugMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/DebuggingZBuffer.mat");
+            if (m_hdCamera == null)
+                m_hdCamera = HDCamera.GetOrCreate(target as Camera);
 
-            if (m_dstTexture == null)
+            FetchDebugInfo(m_dstObj.name);
+            
+            if (m_dstTexture == null || m_dstTexture.width != renderTexture.width || m_dstTexture.height != renderTexture.height)
                 m_dstTexture = new RenderTexture(renderTexture.width, renderTexture.height, 0, RenderTextureFormat.RFloat);
             Graphics.CopyTexture(renderTexture, 0, m_dstTexture, 0);
+
+            int y = 0, yOffset = 20;
             Handles.BeginGUI();
-            var label = $"test.";
-            //Rect cameraRect = GUILayoutUtility.GetRect(64, 64);
-            Rect labelRect = new Rect(0, 0, 100, 100);
+            var label = $"Mipmap Level: " + m_debugInfo.mipmap.x;
+            Rect labelRect = new Rect(0, y, 150, 100);
             EditorGUI.DropShadowLabel(labelRect, label, EditorStyles.wordWrappedLabel);
+            y += yOffset;
+            var label2 = string.Format("ClipZ: {0:f4}; ", m_debugInfo.mipmap.y);
+            label2 += string.Format("Depth: {0:f4}", m_debugInfo.mipmap.z);
+            Rect labelRect2 = new Rect(0, y, 200, 100);
+            EditorGUI.DropShadowLabel(labelRect2, label2, EditorStyles.wordWrappedLabel);
 
-            Rect cameraRect = new Rect(0, 20, 128, 128);
-            var texCoords = new Rect(0, 0, 1, 1);
+            y += yOffset;
+            Vector2 cornerMin = new Vector2();
+            cornerMin.x = m_debugInfo.minMaxXY.x * m_debugInfo.mipmapOffsetSize.z + m_debugInfo.mipmapOffsetSize.x;
+            cornerMin.y = m_debugInfo.minMaxXY.y * m_debugInfo.mipmapOffsetSize.w + m_debugInfo.mipmapOffsetSize.y;
+            Vector2 cornerMax = new Vector2();
+            cornerMax.x = m_debugInfo.minMaxXY.z * m_debugInfo.mipmapOffsetSize.z + m_debugInfo.mipmapOffsetSize.x;
+            cornerMax.y = m_debugInfo.minMaxXY.w * m_debugInfo.mipmapOffsetSize.w + m_debugInfo.mipmapOffsetSize.y;
+            var label3 = string.Format("MinCorner: ({0:f1}, {1:f1})", cornerMin.x, cornerMin.y);
+            Rect labelRect3 = new Rect(0, y, 200, 100);
+            EditorGUI.DropShadowLabel(labelRect3, label3, EditorStyles.wordWrappedLabel);
+
+            y += yOffset;
+            var label4 = string.Format("MaxCorner: ({0:f1}, {1:f1})", cornerMax.x, cornerMax.y);
+            Rect labelRect4 = new Rect(0, y, 200, 100);
+            EditorGUI.DropShadowLabel(labelRect4, label4, EditorStyles.wordWrappedLabel);
+
+            y += yOffset;
+            int size = 128;
+            Rect cameraRect = new Rect(0, y, size, size);
+            Vector2 scale = new Vector2(1.0f, 1.0f);
+            scale.x = (float)m_hdCamera.actualWidth / renderTexture.width;
+            scale.y = (float)m_hdCamera.actualHeight / renderTexture.height;
+            var texCoords = new Rect(m_debugInfo.mipmapOffsetSize.x / renderTexture.width,
+                (m_debugInfo.mipmapOffsetSize.y) / renderTexture.height,
+                (m_debugInfo.mipmapOffsetSize.z) / renderTexture.width,
+                (m_debugInfo.mipmapOffsetSize.w) / renderTexture.height);
             GUI.DrawTextureWithTexCoords(cameraRect, m_dstTexture, texCoords, false);
+            if (Event.current.type.Equals(EventType.Repaint))
+            {
+//                 cameraRect.x += 120;
+//                 Graphics.DrawTexture(cameraRect, m_dstTexture, texCoords,
+//                     0, 0, 0, 0, m_debugMaterial, 3);
+            }
 
-            
+            float height = m_debugInfo.minMaxXY.w - m_debugInfo.minMaxXY.y;
+            Rect position = new Rect(m_debugInfo.minMaxXY.x * size * scale.x,
+                y + (1.0f - m_debugInfo.minMaxXY.y - height) * size,
+                (m_debugInfo.minMaxXY.z - m_debugInfo.minMaxXY.x) * size,
+                (m_debugInfo.minMaxXY.w - m_debugInfo.minMaxXY.y) * size);
+
+            Sprite sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            GUI.DrawTexture(position, sprite.texture);
+
+
             //GUI.DrawTexture(cameraRect, m_dstTexture, ScaleMode.ScaleAndCrop, true, 0, Color.red, 0, 0);
             //EditorGUI.DrawPreviewTexture(cameraRect, renderTexture);
             Handles.EndGUI();
         }
 
-        void FetchDebugInfo()
+        void FetchDebugInfo(string objName)
         {
             if (m_dstObj == null)
                 return;
 
 
 
-            HDRenderPipeline pipeline = (RenderPipelineManager.currentPipeline as HDRenderPipeline);
+            //HDRenderPipeline pipeline = (RenderPipelineManager.currentPipeline as HDRenderPipeline);
             HiZBufferDebugInfo info;
-            pipeline.QueryHiZBufferDebugInfo(m_dstObj.name, out info);
-
-//             cs.SetBuffer(0, "_debugBufferEx", m_debugBuffer);
-            //m_debugBuffer.GetData();
+            //UnityEditor.CameraEditorUtils.QueryHiZBufferDebugInfo(m_dstObj.name, out info);
+            UnityEngine.Rendering.ScriptableRenderContext.QueryHiZBufferDebugInfo(objName, out info);
+            m_debugInfo.mipmap = info.mipmap;
+            m_debugInfo.minMaxXY = info.minMaxXY;
+            m_debugInfo.mipmapOffsetSize = info.mipmapOffsetSize;
         }
 
         void OnOverlayGUI(Object target, SceneView sceneView)

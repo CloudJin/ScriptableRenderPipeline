@@ -63,6 +63,7 @@ namespace UnityEditor.Rendering.LookDev
             m_Camera.cullingMask = 1 << k_PreviewCullingLayerIndex;
             m_Camera.renderingPath = RenderingPath.DeferredShading;
             m_Camera.useOcclusionCulling = false;
+            m_Camera.useGpuOcclusionCulling = false;
             m_Camera.scene = m_PreviewScene;
 
             var lightGO = EditorUtility.CreateGameObjectWithHideFlags("Look Dev Sun", HideFlags.HideAndDontSave, typeof(Light));
