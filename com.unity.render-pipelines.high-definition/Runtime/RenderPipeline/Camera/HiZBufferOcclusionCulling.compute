@@ -108,10 +108,15 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 	{
 		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw);
 		uint2 offset = _MipmapOffset[mip].xy;
-		uint2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize) + offset;
-		uint2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize) + offset;
-		uint2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize) + offset;
-		uint2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize) + offset;
+		uint2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize + 0.5f) + offset;
+		uint2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize + 0.5f) + offset;
+		uint2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize + 0.5f) + offset;
+		uint2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize + 0.5f) + offset;
+		
+		// uint2 corner0 = float2(floor(minXY.x * mipmapTextureSize.x), floor(minXY.y * mipmapTextureSize.y)) + offset;
+		// uint2 corner1 = float2(floor(minXY.x * mipmapTextureSize.x), ceil(maxXY.y * mipmapTextureSize.y)) + offset;
+		// uint2 corner2 = float2(ceil(maxXY.x * mipmapTextureSize.x), floor(minXY.y * mipmapTextureSize.y)) + offset;
+		// uint2 corner3 = float2(ceil(maxXY.x * mipmapTextureSize.x), ceil(maxXY.y * mipmapTextureSize.y)) + offset;
 		
 		float4 depth;
 		depth.x = _DepthMipChain[COORD_TEXTURE2D_X(corner0)];
