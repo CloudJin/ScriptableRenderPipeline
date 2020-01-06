@@ -1282,7 +1282,10 @@ namespace UnityEngine.Rendering.HighDefinition
                     {
                         // for now, only support one camera
                         RenderTexture rt = m_SharedRTManager.GetDepthTextureOC().rt;
-                        renderContext.AssignDepthPyramidTexture(rt, camera.pixelWidth, camera.pixelHeight, m_SharedRTManager.GetDepthBufferMipChainInfoRef().mipLevelCount);
+                        renderContext.AssignDepthPyramidTexture(rt,
+                            camera.pixelWidth,
+                            camera.pixelHeight,
+                            m_SharedRTManager.GetDepthBufferMipChainInfoRef().mipLevelCount);
                     }
 
 

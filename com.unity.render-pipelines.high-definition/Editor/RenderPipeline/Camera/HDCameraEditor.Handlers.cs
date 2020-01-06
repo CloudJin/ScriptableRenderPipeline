@@ -48,9 +48,14 @@ namespace UnityEditor.Rendering.HighDefinition
                 m_hdCamera = HDCamera.GetOrCreate(target as Camera);
 
             FetchDebugInfo(m_dstObj.name);
-            
+
             if (m_dstTexture == null || m_dstTexture.width != renderTexture.width || m_dstTexture.height != renderTexture.height)
+            {
+                if (m_dstTexture)
+                    m_dstTexture.Release();
                 m_dstTexture = new RenderTexture(renderTexture.width, renderTexture.height, 0, RenderTextureFormat.RFloat);
+                m_dstTexture.filterMode = FilterMode.Point;
+            }
             Graphics.CopyTexture(renderTexture, 0, m_dstTexture, 0);
 
             int y = 0, yOffset = 20;

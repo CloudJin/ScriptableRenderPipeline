@@ -58,7 +58,6 @@ StructuredBuffer<InstanceData> _InstanceDataBuffer;
 StructuredBuffer<uint4> _MipmapOffset;
 RWStructuredBuffer<uint> _IsVisibleBuffer;
 
-RWStructuredBuffer<float3> _debugBuffer;
 RWStructuredBuffer<DebugData> _debugBufferEx;
 //--------------------------------------------------------------------------------------
 // Kernels & Functions
@@ -88,28 +87,25 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 	
     // Calculate hi-Z buffer mip
     int2 size = (maxXY - minXY) * _ViewportSize.xy;
-    float mip = ceil(log2(max(size.x, size.y))) - 1;
+    float mip = ceil(log2(max(size.x, size.y) / 2));
     mip = clamp(mip, 0, 10);
     
     // Texel footprint for the lower (finer-grained) level
-    float  level_lower = max(mip - 1, 0);
-    float2 scale = exp2(-level_lower);
-    float2 a = floor(minXY * scale);
-    float2 b = ceil(maxXY * scale);
-    float2 dims = b - a;
+    // float  level_lower = max(mip - 1, 0);
+    // float2 scale = exp2(-level_lower);
+    // float2 a = floor(minXY * scale);
+    // float2 b = ceil(maxXY * scale);
+    // float2 dims = b - a;
     
-    // Use the lower level if we only touch <= 2 texels in both dimensions
-    if (dims.x <= 2 && dims.y <= 2)
-    {
-        mip = level_lower;
-    }
+    // // Use the lower level if we only touch <= 2 texels in both dimensions
+    // if (dims.x <= 2 && dims.y <= 2)
+    // {
+        // mip = level_lower;
+    // }
     
 	float HIZdepth = 1;  
 	if (1)
 	{
-
-		// maxXY.y = 1 - minXY.y;
-		// minXY.y = 1 - maxXY.y;
 		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw);
 		uint2 offset = _MipmapOffset[mip].xy;
 		uint2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize) + offset;
@@ -118,10 +114,10 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 		uint2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize) + offset;
 		
 		float4 depth;
-		depth.x = _DepthMipChain[COORD_TEXTURE2D_X(corner0)] - 0.000015;
-		depth.y = _DepthMipChain[COORD_TEXTURE2D_X(corner1)] - 0.000015;
-		depth.z = _DepthMipChain[COORD_TEXTURE2D_X(corner2)] - 0.000015;
-		depth.w = _DepthMipChain[COORD_TEXTURE2D_X(corner3)] - 0.000015;
+		depth.x = _DepthMipChain[COORD_TEXTURE2D_X(corner0)];
+		depth.y = _DepthMipChain[COORD_TEXTURE2D_X(corner1)];
+		depth.z = _DepthMipChain[COORD_TEXTURE2D_X(corner2)];
+		depth.w = _DepthMipChain[COORD_TEXTURE2D_X(corner3)];
 		HIZdepth = min(min(depth.x, depth.y), min(depth.z, depth.w));  
 		//HIZdepth = max(max(depth.x, depth.y), max(depth.z, depth.w));  
 		HIZdepth *= 2;
@@ -168,7 +164,7 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 			yPos += stepY;    
 		}
 	}
-    return (1 - clipMinZ) >= HIZdepth; // last is an epsilon
+    return (1 - clipMinZ) >= HIZdepth - 0.000015; // last is an epsilon
 }
 
 inline uint IsVisibleAfterFrustumCulling(float4 clipPos)
@@ -223,10 +219,7 @@ inline void CSMain (
     boxCorners[7] = float4(maxPos.x, maxPos.y, maxPos.z, 1.0);
 
 
-	
     float4 clipPos = mul(_UNITY_MATRIX_MVP, boxCorners[0]);
-	//float4 clipPos = float4(ComputeNDCWithZ(boxCorners[0].xyz, _UNITY_MATRIX_MVP), boxCorners[0].w);
-	
     uint isInFrustum = IsVisibleAfterFrustumCulling(clipPos);
 
     clipPos.xyz = clipPos.xyz / clipPos.w;
@@ -253,47 +246,6 @@ inline void CSMain (
         clipMaxY = max(clipPos.y, clipMaxY);
         clipMinZ = min(clipPos.z, clipMinZ);
     }
-
-	if (1)
-	{
-		float2 minXY = float2(clipMinX, clipMinY) * 0.5 + 0.5;   
-		float2 maxXY = float2(clipMaxX, clipMaxY) * 0.5 + 0.5;
-		 
-		 int2 size = (maxXY - minXY) * _ViewportSize.xy;
-		float mip = ceil(log2(max(size.x, size.y)));
-		mip = clamp(mip, 0, 10);
-		//mip -= 1;
-		//_debugBuffer[tID] = float3(mip, _MipmapOffset[3].xy);
-		
-		minXY = clamp(minXY, 0, 1);
-		maxXY = clamp(maxXY, 0, 1);
-		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw);
-		uint2 offset = _MipmapOffset[mip].xy;
-		uint2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize) + offset;
-		uint2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize) + offset;
-		uint2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize) + offset;
-		uint2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize) + offset;
-		float4 depth;
-		depth.x = _DepthMipChain[COORD_TEXTURE2D_X(corner0)];
-		depth.y = _DepthMipChain[COORD_TEXTURE2D_X(corner1)];
-		depth.z = _DepthMipChain[COORD_TEXTURE2D_X(corner2)];
-		depth.w = _DepthMipChain[COORD_TEXTURE2D_X(corner3)];
-		depth *= 2;
-		float HIZdepth = MIN_DEPTH(MIN_DEPTH(depth.x, depth.y), MIN_DEPTH(depth.z, depth.w));  
-		
-		 _debugBuffer[tID].x = mip;
-		 _debugBuffer[tID].yz = depth.xz;
-		 _debugBuffer[tID + 1].xy = mipmapTextureSize;
-		 //_debugBuffer[tID + 1].z = depth.x;
-		 _debugBuffer[tID + 2] = float3(corner0, clipMinZ);
-		 _debugBuffer[tID + 3].xyz = float3(corner3, clipMinZ);
-		 _debugBuffer[tID + 4].xyz = float3(minXY, 0);
-		 _debugBuffer[tID + 5].xyz = float3(_ZBufferParams.xy, 0);
-		 
-		 //depth.z = Linear01Depth(depth.z, _ZBufferParams);
-		 _debugBuffer[tID + 6].xy = depth.xy;
-		 _debugBuffer[tID + 7].xy = float3(depth.zw, HIZdepth);
-	}
 	
     // We only cull instances where the camera doesn't intersect the instance 
     // bounds. If the camera is inside the bounds we want to render the object
