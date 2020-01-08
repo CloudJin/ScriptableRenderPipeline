@@ -1278,13 +1278,15 @@ namespace UnityEngine.Rendering.HighDefinition
                         cs.SetVector(HDShaderIDs._ZBufferParams, hdCamera.zBufferParams);
 
                     }
+                    
                     if (m_SharedRTManager.GetDepthBufferMipChainInfoRef().OffsetBufferNeedUpdate())
                     {
                         // for now, only support one camera
+                        var info = m_SharedRTManager.GetDepthBufferMipChainInfoRef();
                         RenderTexture rt = m_SharedRTManager.GetDepthTextureOC().rt;
                         renderContext.AssignDepthPyramidTexture(rt,
-                            camera.pixelWidth,
-                            camera.pixelHeight,
+                            info.mipLevelSizes[0].x,
+                            info.mipLevelSizes[0].y,
                             m_SharedRTManager.GetDepthBufferMipChainInfoRef().mipLevelCount);
                     }
 

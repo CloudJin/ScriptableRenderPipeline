@@ -104,14 +104,19 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
     // }
     
 	float HIZdepth = 1;  
-	if (1)
+	if (0)
 	{
+		float2 scale = _ViewportSize / _MipmapOffset[0].zw;
 		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw);
 		uint2 offset = _MipmapOffset[mip].xy;
-		uint2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize + 0.5f) + offset;
-		uint2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize + 0.5f) + offset;
-		uint2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize + 0.5f) + offset;
-		uint2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize + 0.5f) + offset;
+		int2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize * scale + 0.5f) + offset - 1;
+		int2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize * scale + 0.5f) + offset - 1;
+		int2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize * scale + 0.5f) + offset - 1;
+		int2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize * scale + 0.5f) + offset - 1;
+		corner0 = max(corner0, 0);
+		corner1 = max(corner1, 0);
+		corner2 = max(corner2, 0);
+		corner3 = max(corner3, 0);
 		
 		// uint2 corner0 = float2(floor(minXY.x * mipmapTextureSize.x), floor(minXY.y * mipmapTextureSize.y)) + offset;
 		// uint2 corner1 = float2(floor(minXY.x * mipmapTextureSize.x), ceil(maxXY.y * mipmapTextureSize.y)) + offset;
@@ -137,37 +142,31 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 	}
 	else
 	{
-		minXY = clamp(minXY, 0, 1);
-		maxXY = clamp(maxXY, 0, 1);
-		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw);
-		// find the max depth
-		// Hi-Z approach that allows for more samples.
-		// https://www.gamedev.net/blogs/entry/2249535-hierarchical-z-buffer-occlusion-culling-updated-07152011/
-		//const   int numSamples = 24;
-		const   int   xSamples = 8; // numSamples + 1;
-		const   int   ySamples = 25; // numSamples + 1;
-		const  float    widthSS = (maxXY.x - minXY.x);
-		const  float   heightSS = (maxXY.y - minXY.y);    
-		//const  float  maxSizeSS = max(widthSS * mipmapTextureSize.x, heightSS * mipmapTextureSize.y);    
-		const  float      stepX = widthSS / xSamples;    
-		const  float      stepY = heightSS / ySamples;    
-		
+		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw); 
 		float2 offset = _MipmapOffset[mip].xy;
-		float yPos = minXY.y;
-		for(int y = 0; y < ySamples; ++y)
+		float2 scale = _ViewportSize / _MipmapOffset[0].zw;
+		int2 cornerMin = floor(minXY * mipmapTextureSize * scale + offset) - 1;
+		cornerMin = max(cornerMin, 0);
+		int2 cornerMax = ceil(maxXY * mipmapTextureSize * scale + offset) - 1;
+		cornerMax = max(cornerMax, 0);
+		
+		for(int y = cornerMin.y; y <= cornerMax.y; ++y)
 		{
-			float xPos = minXY.x;
-			for(int x = 0; x < xSamples; ++x)
+			for(int x = cornerMin.x; x <= cornerMax.x; ++x)
 			{
-				//const float2 nCoords0 = float2(xPos, yPos);
-				//HIZdepth = min(HIZdepth, _HiZMap.SampleLevel(sampler_HiZMap, nCoords0, 0).r);
-				//float2 xy = float2(xPos * mipmapTextureSize.x, yPos * mipmapTextureSize.y);
-				float2 xy = (float2(xPos, yPos) * mipmapTextureSize) + offset;
+				int2 xy = uint2(x, y);
 				HIZdepth = min(HIZdepth, _DepthMipChain[COORD_TEXTURE2D_X(xy)]);
-				xPos += stepX;
-			}
-			yPos += stepY;    
+			}  
 		}
+		HIZdepth *= 2;
+		
+		_debugBufferEx[id].mipmap.x = mip;
+		_debugBufferEx[id].mipmap.y = 1 - clipMinZ;
+		_debugBufferEx[id].mipmap.z = HIZdepth;
+		_debugBufferEx[id].minMaxXY.xy = minXY;
+		_debugBufferEx[id].minMaxXY.zw = maxXY;
+		_debugBufferEx[id].mipmapOffsetSize.xy = offset;
+		_debugBufferEx[id].mipmapOffsetSize.zw = mipmapTextureSize;
 	}
     return (1 - clipMinZ) >= HIZdepth - 0.000015; // last is an epsilon
 }

@@ -15,8 +15,9 @@ namespace UnityEditor.Rendering.HighDefinition
 
             if (!UnityEditor.Rendering.CameraEditorUtils.IsViewPortRectValidToRender(c.rect))
                 return;
-
-            DrawDebugView((RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager.GetDepthTextureOC());
+            var mgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager;
+            var info = mgr.GetDepthBufferMipChainInfoRef();
+            DrawDebugView(mgr.GetDepthTextureOC(), info.mipLevelSizes[0].x, info.mipLevelSizes[0].y);
 
             SceneViewOverlay_Window(EditorGUIUtility.TrTextContent("Camera Preview"), OnOverlayGUI, -100, target);
             UnityEditor.CameraEditorUtils.HandleFrustum(c, c.GetInstanceID());
@@ -37,7 +38,7 @@ namespace UnityEditor.Rendering.HighDefinition
         DebugInfo m_debugInfo;
         public Material m_debugMaterial;
         HDCamera m_hdCamera;
-        void DrawDebugView(RTHandle rtHandle)
+        void DrawDebugView(RTHandle rtHandle, int mip0Width, int mip0Height)
         {
             RenderTexture renderTexture = rtHandle.rt;
             if (renderTexture == null || m_dstObj == null)
@@ -88,9 +89,7 @@ namespace UnityEditor.Rendering.HighDefinition
             y += yOffset;
             int size = 128;
             Rect cameraRect = new Rect(0, y, size, size);
-            Vector2 scale = new Vector2(1.0f, 1.0f);
-            scale.x = (float)m_hdCamera.actualWidth / renderTexture.width;
-            scale.y = (float)m_hdCamera.actualHeight / renderTexture.height;
+            
             var texCoords = new Rect(m_debugInfo.mipmapOffsetSize.x / renderTexture.width,
                 (m_debugInfo.mipmapOffsetSize.y) / renderTexture.height,
                 (m_debugInfo.mipmapOffsetSize.z) / renderTexture.width,
@@ -103,9 +102,12 @@ namespace UnityEditor.Rendering.HighDefinition
 //                     0, 0, 0, 0, m_debugMaterial, 3);
             }
 
+            Vector2 scale = new Vector2(1.0f, 1.0f);
+            scale.x = (float)m_hdCamera.actualWidth / mip0Width;
+            scale.y = (float)m_hdCamera.actualHeight / mip0Height;
             float height = m_debugInfo.minMaxXY.w - m_debugInfo.minMaxXY.y;
             Rect position = new Rect(m_debugInfo.minMaxXY.x * size * scale.x,
-                y + (1.0f - m_debugInfo.minMaxXY.y - height) * size,
+                y + (1.0f - m_debugInfo.minMaxXY.y * scale.y - height) * size,
                 (m_debugInfo.minMaxXY.z - m_debugInfo.minMaxXY.x) * size,
                 (m_debugInfo.minMaxXY.w - m_debugInfo.minMaxXY.y) * size);
 
