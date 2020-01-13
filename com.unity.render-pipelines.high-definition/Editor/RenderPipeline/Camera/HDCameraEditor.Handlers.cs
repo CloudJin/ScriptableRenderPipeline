@@ -15,12 +15,15 @@ namespace UnityEditor.Rendering.HighDefinition
 
             if (!UnityEditor.Rendering.CameraEditorUtils.IsViewPortRectValidToRender(c.rect))
                 return;
-            var mgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager;
-            var info = mgr.GetDepthBufferMipChainInfoRef();
-            DrawDebugView(mgr.GetDepthTextureOC(), info.mipLevelSizes[0].x, info.mipLevelSizes[0].y);
 
             SceneViewOverlay_Window(EditorGUIUtility.TrTextContent("Camera Preview"), OnOverlayGUI, -100, target);
             UnityEditor.CameraEditorUtils.HandleFrustum(c, c.GetInstanceID());
+
+            if (RenderPipelineManager.currentPipeline == null)
+                return;
+            var mgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager;
+            var info = mgr.GetDepthBufferMipChainInfoRef();
+            DrawDebugView(mgr.GetDepthTextureOC(), info.mipLevelSizes[0].x, info.mipLevelSizes[0].y);
         }
 
 

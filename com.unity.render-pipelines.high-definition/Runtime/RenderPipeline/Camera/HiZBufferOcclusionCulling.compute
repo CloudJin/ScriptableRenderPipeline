@@ -80,14 +80,14 @@ inline uint IsCameraOutsideObjBounds(float3 pos, float3 minPos, float3 maxPos)
 inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX, float clipMaxX, float clipMinY, float clipMaxY, float clipMinZ, int id)
 {
     // Change it to 0 - 1 range 
-    float2 minXY = float2(clipMinX, clipMinY) * 0.5 + 0.5;
-    float2 maxXY = float2(clipMaxX, clipMaxY) * 0.5 + 0.5;
+    float2 minXY = float2(clipMinX, clipMinY) * 0.5f + 0.5f;
+    float2 maxXY = float2(clipMaxX, clipMaxY) * 0.5f + 0.5f;
     minXY = clamp(minXY, 0, 1);
 	maxXY = clamp(maxXY, 0, 1);
 	
     // Calculate hi-Z buffer mip
     int2 size = (maxXY - minXY) * _ViewportSize.xy;
-    float mip = ceil(log2(max(size.x, size.y) / 2));
+    float mip = ceil(log2(max(size.x, size.y) / 2.0f));
     mip = clamp(mip, 0, 10);
     
     // Texel footprint for the lower (finer-grained) level
@@ -109,14 +109,10 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 		float2 scale = _ViewportSize / _MipmapOffset[0].zw;
 		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw);
 		uint2 offset = _MipmapOffset[mip].xy;
-		int2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize * scale + 0.5f) + offset - 1;
-		int2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize * scale + 0.5f) + offset - 1;
-		int2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize * scale + 0.5f) + offset - 1;
-		int2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize * scale + 0.5f) + offset - 1;
-		corner0 = max(corner0, 0);
-		corner1 = max(corner1, 0);
-		corner2 = max(corner2, 0);
-		corner3 = max(corner3, 0);
+		int2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize * scale + 0.5f) + offset;
+		int2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize * scale + 0.5f) + offset;
+		int2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize * scale + 0.5f) + offset;
+		int2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize * scale + 0.5f) + offset;
 		
 		// uint2 corner0 = float2(floor(minXY.x * mipmapTextureSize.x), floor(minXY.y * mipmapTextureSize.y)) + offset;
 		// uint2 corner1 = float2(floor(minXY.x * mipmapTextureSize.x), ceil(maxXY.y * mipmapTextureSize.y)) + offset;
@@ -145,16 +141,15 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw); 
 		float2 offset = _MipmapOffset[mip].xy;
 		float2 scale = _ViewportSize / _MipmapOffset[0].zw;
-		int2 cornerMin = floor(minXY * mipmapTextureSize * scale + offset) - 1;
-		cornerMin = max(cornerMin, 0);
-		int2 cornerMax = ceil(maxXY * mipmapTextureSize * scale + offset) - 1;
-		cornerMax = max(cornerMax, 0);
+		int2 cornerMin = floor(minXY * mipmapTextureSize * scale + offset);
+		int2 cornerMax = ceil(maxXY * mipmapTextureSize * scale + offset);
+
 		
 		for(int y = cornerMin.y; y <= cornerMax.y; ++y)
 		{
 			for(int x = cornerMin.x; x <= cornerMax.x; ++x)
 			{
-				int2 xy = uint2(x, y);
+				int2 xy = int2(x, y);
 				HIZdepth = min(HIZdepth, _DepthMipChain[COORD_TEXTURE2D_X(xy)]);
 			}  
 		}
@@ -181,6 +176,12 @@ inline uint IsVisibleAfterFrustumCulling(float4 clipPos)
             ? 0 : 1;
 }
 
+inline uint DetailCulling(float clipMinX, float clipMaxX, float clipMinY, float clipMaxY)
+{
+	int2 cornerMin = round(float2(clipMinX, clipMinY) * _ViewportSize); 
+	int2 cornerMax = round(float2(clipMaxX, clipMaxY) * _ViewportSize);
+	return cornerMin.x == cornerMax.x || cornerMin.y == cornerMax.y? 0: 1;
+}
 
 //--------------------------------------------------------------------------------------
 // Kernels
@@ -198,7 +199,7 @@ inline void CSMain (
 	// and dipathed group num Y and Z are all 1. 
     uint tID = _dispatchThreadID.x;
 
-    // Reset the is visible state
+    // Reset the visible state
     _IsVisibleBuffer[tID] = 0;
     //_ShadowIsVisibleBuffer[tID] = 0;
 
@@ -207,10 +208,7 @@ inline void CSMain (
 
     // Check if the instance is visible
     float3 minPos = instance.boundsCenter - instance.boundsExtents;
-    float3 maxPos = instance.boundsCenter + instance.boundsExtents;
-
-	float3 test = instance.boundsExtents;
-	 
+    float3 maxPos = instance.boundsCenter + instance.boundsExtents + 0.01f;
 	
     float4 boxCorners[8];
     boxCorners[0] = float4(minPos.x, minPos.y, minPos.z, 1.0);
@@ -233,7 +231,7 @@ inline void CSMain (
     float clipMaxY = clipPos.y;
     float clipMinZ = clipPos.z;
 
-    float minDistanceToCamera = distance(instance.boundsCenter.xyz, _CamPosition.xyz);
+    //float minDistanceToCamera = distance(instance.boundsCenter.xyz, _CamPosition.xyz);
     [unroll]
     for (int i = 1; i < 8; i++)
     {
@@ -258,6 +256,8 @@ inline void CSMain (
     {
         // Do we pass the frustum culling...?
         isVisible *= _ShouldFrustumCull ? isInFrustum : 1;
+		
+		isVisible *= isVisible > 0? DetailCulling(clipMinX, clipMaxX, clipMinY, clipMaxY): 1;
 
         // Do we pass the occlusion culling...?
         isVisible *= (_ShouldOcclusionCull * isVisible > 0) ? IsVisibleAfterOcclusionCulling(instance, clipMinX, clipMaxX, clipMinY, clipMaxY, clipMinZ, tID) : 1;
