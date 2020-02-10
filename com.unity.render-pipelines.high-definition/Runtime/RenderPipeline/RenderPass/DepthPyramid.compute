@@ -38,7 +38,7 @@ void KERNEL_NAME(uint3 dispatchThreadId : SV_DispatchThreadID)
     float p11 = _DepthMipChain[COORD_TEXTURE2D_X(min(srcPixelUL + uint2(1u, 1u), srcLimit))];
     float4 depths = float4(p00, p10, p01, p11);
 
-    // Select the closest sample
+    // Select the fathest depth
     float minDepth = min(min(depths.x, depths.y), min(depths.z, depths.w));
 
     _DepthMipChain[COORD_TEXTURE2D_X(dstOffset + dispatchThreadId.xy)] = minDepth;

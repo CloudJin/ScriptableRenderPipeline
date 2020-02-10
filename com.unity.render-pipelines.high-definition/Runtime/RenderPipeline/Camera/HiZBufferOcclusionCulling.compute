@@ -109,10 +109,10 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 		float2 scale = _ViewportSize / _MipmapOffset[0].zw;
 		float2 mipmapTextureSize = float2(_MipmapOffset[mip].zw);
 		uint2 offset = _MipmapOffset[mip].xy;
-		int2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize * scale + 0.5f) + offset;
-		int2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize * scale + 0.5f) + offset;
-		int2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize * scale + 0.5f) + offset;
-		int2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize * scale + 0.5f) + offset;
+		int2 corner0 = round(float2(minXY.x, minXY.y) * mipmapTextureSize * scale) + offset;
+		int2 corner1 = round(float2(minXY.x, maxXY.y) * mipmapTextureSize * scale) + offset;
+		int2 corner2 = round(float2(maxXY.x, minXY.y) * mipmapTextureSize * scale) + offset;
+		int2 corner3 = round(float2(maxXY.x, maxXY.y) * mipmapTextureSize * scale) + offset;
 		
 		// uint2 corner0 = float2(floor(minXY.x * mipmapTextureSize.x), floor(minXY.y * mipmapTextureSize.y)) + offset;
 		// uint2 corner1 = float2(floor(minXY.x * mipmapTextureSize.x), ceil(maxXY.y * mipmapTextureSize.y)) + offset;
@@ -142,7 +142,7 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 		float2 offset = _MipmapOffset[mip].xy;
 		float2 scale = _ViewportSize / _MipmapOffset[0].zw;
 		int2 cornerMin = floor(minXY * mipmapTextureSize * scale + offset);
-		int2 cornerMax = ceil(maxXY * mipmapTextureSize * scale + offset);
+		int2 cornerMax = round(maxXY * mipmapTextureSize * scale + offset);
 
 		
 		for(int y = cornerMin.y; y <= cornerMax.y; ++y)
