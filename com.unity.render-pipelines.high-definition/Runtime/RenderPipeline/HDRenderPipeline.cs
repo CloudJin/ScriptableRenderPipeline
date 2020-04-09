@@ -99,6 +99,7 @@ namespace UnityEngine.Rendering.HighDefinition
         Material m_DownsampleDepthMaterial;
         Material m_UpsampleTransparency;
         GPUCopy m_GPUCopy;
+        GPUCopy m_GPUCopyShadowmap;
         MipGenerator m_MipGenerator;
         BlueNoise m_BlueNoise;
 
@@ -341,6 +342,7 @@ namespace UnityEngine.Rendering.HighDefinition
 
             m_XRSystem = new XRSystem(asset.renderPipelineResources.shaders);
             m_GPUCopy = new GPUCopy(defaultResources.shaders.copyChannelCS);
+            m_GPUCopyShadowmap = new GPUCopy(defaultResources.shaders.copyTexture2DChannelCS);
 
             m_MipGenerator = new MipGenerator(defaultResources);
             m_BlueNoise = new BlueNoise(defaultResources);
@@ -1030,6 +1032,25 @@ namespace UnityEngine.Rendering.HighDefinition
             }
         }
 
+        void CopyShadowMapCascade(HDCamera hdCamera, CommandBuffer cmd)
+        {
+            using (new ProfilingSample(cmd, "CopyShadowMapAtlas", CustomSamplerId.DepthPyramid.GetSampler()))
+            {
+                HDShadowAtlas shadowAtlas = m_ShadowManager.CascadeAtlas;
+                if (shadowAtlas.renderTarget != null
+                    && m_ShadowManager.CascadeAtlasPyramid != null
+                    && m_ShadowManager.CascadeAtlasPyramid.rt != null)
+                {
+                    int width = m_ShadowManager.CascadeAtlas.width;
+                    int height = m_ShadowManager.CascadeAtlas.height;
+                    m_GPUCopyShadowmap.SampleCopyChannel_xyzw2x(cmd,
+                        m_ShadowManager.CascadeAtlas.renderTarget,
+                        m_ShadowManager.CascadeAtlasPyramid,
+                        new Rendering.RectInt(0, 0, width, height));
+                }
+            } 
+        }
+
         void SetMicroShadowingSettings(CommandBuffer cmd)
         {
             MicroShadowing microShadowingSettings = VolumeManager.instance.stack.GetComponent<MicroShadowing>();
@@ -1322,7 +1343,7 @@ namespace UnityEngine.Rendering.HighDefinition
                         skipRequest = true;
                         // Execute custom render
                         additionalCameraData.ExecuteCustomRender(renderContext, hdCamera);
-                    }
+                    } 
 
                     if (skipRequest)
                     {
@@ -1331,7 +1352,7 @@ namespace UnityEngine.Rendering.HighDefinition
                         renderContext.Submit();
                         GenericPool<HDCullingResults>.Release(cullingResults);
                         UnityEngine.Rendering.RenderPipeline.EndCameraRendering(renderContext, camera);
-                        continue;
+                        continue;  
                     }
 
                     // Select render target
@@ -2092,6 +2113,9 @@ namespace UnityEngine.Rendering.HighDefinition
                     hdCamera.SetupGlobalParams(cmd, m_Time, m_LastTime, m_FrameCount);
                 }
 
+                CopyShadowMapCascade(hdCamera, cmd);
+                GenerateShadowMapPyramid(hdCamera, cmd);
+
                 if (!hdCamera.frameSettings.SSRRunsAsync())
                 {
                     // Needs the depth pyramid and motion vectors, as well as the render of the previous frame.
@@ -2298,7 +2322,6 @@ namespace UnityEngine.Rendering.HighDefinition
 
             // Send all required graphics buffer to client systems.
             SendGraphicsBuffers(cmd, hdCamera);
-
             // Due to our RT handle system we don't write into the backbuffer depth buffer (as our depth buffer can be bigger than the one provided)
             // So we need to do a copy of the corresponding part of RT depth buffer in the target depth buffer in various situation:
             // - RenderTexture (camera.targetTexture != null) has a depth buffer (camera.targetTexture.depth != 0)
@@ -3780,7 +3803,7 @@ namespace UnityEngine.Rendering.HighDefinition
                     //cmd.SetGlobalTexture(HDShaderIDs._CameraDepthTexture, m_SharedRTManager.m_CameraDepthBufferMipChainOC);
                 }
             }
-            
+
 
             float scaleX = hdCamera.actualWidth / (float)m_SharedRTManager.GetDepthTexture().rt.width;
             float scaleY = hdCamera.actualHeight / (float)m_SharedRTManager.GetDepthTexture().rt.height;
@@ -3789,6 +3812,17 @@ namespace UnityEngine.Rendering.HighDefinition
             cmd.SetGlobalTexture(HDShaderIDs._CameraDepthTexture, m_SharedRTManager.GetDepthTexture());
             cmd.SetGlobalVector(HDShaderIDs._DepthPyramidScale, pyramidScaleLod);
             PushFullScreenDebugTextureMip(hdCamera, cmd, m_SharedRTManager.GetDepthTexture(), mipCount, pyramidScale, debugMode);
+        }
+
+
+        void GenerateShadowMapPyramid(HDCamera hdCamera, CommandBuffer cmd)
+        {
+            using (new ProfilingSample(cmd, "Generate ShadowMap Pyramid", CustomSamplerId.DepthPyramid.GetSampler()))
+            {
+                m_MipGenerator.RenderShadowmapPyramid(cmd,
+                    m_ShadowManager.CascadeAtlasPyramid,
+                    m_ShadowManager.CascadeAtlas.cascadeCount);
+            }
         }
 
         void DownsampleDepthForLowResTransparency(HDCamera hdCamera, CommandBuffer cmd)

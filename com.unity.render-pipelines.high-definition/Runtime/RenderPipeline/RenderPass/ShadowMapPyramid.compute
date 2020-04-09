@@ -5,11 +5,13 @@
 
 #pragma kernel KDepthDownsample8DualUav  KERNEL_SIZE=8  KERNEL_NAME=KDepthDownsample8DualUav
 
-RW_TEXTURE2D_X(float, _DepthMipChain);
+RW_TEXTURE2D(float, _ShadowmapMipChain);
 
 CBUFFER_START(cb)
-    uint4 _SrcOffsetAndLimit; // {x, y, w - 1, h - 1}
-    uint4 _DstOffset;         // {x, y, 0, 0}
+    uint4 _ShadowmapSrcOffsetAndLimit; // {x, y, w - 1, h - 1}
+    uint4 _ShadowmapDstOffset;         // {x, y, 0, 0}
+	
+	
 CBUFFER_END
 
 #if UNITY_REVERSED_Z
@@ -25,23 +27,32 @@ void KERNEL_NAME(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
 
-    uint2 srcOffset = _SrcOffsetAndLimit.xy;
-    uint2 srcLimit  = _SrcOffsetAndLimit.zw;
-    uint2 dstOffset = _DstOffset.xy;
+    uint2 srcOffset = _ShadowmapSrcOffsetAndLimit.xy;
+    uint2 srcLimit  = _ShadowmapSrcOffsetAndLimit.zw;
+    uint2 dstOffset = _ShadowmapDstOffset.xy;
 
     // Upper-left pixel coordinate of quad that this thread will read
     uint2 srcPixelUL = srcOffset + (dispatchThreadId.xy << 1);
 
-    float p00 = _DepthMipChain[COORD_TEXTURE2D_X(min(srcPixelUL + uint2(0u, 0u), srcLimit))];
-    float p10 = _DepthMipChain[COORD_TEXTURE2D_X(min(srcPixelUL + uint2(1u, 0u), srcLimit))];
-    float p01 = _DepthMipChain[COORD_TEXTURE2D_X(min(srcPixelUL + uint2(0u, 1u), srcLimit))];
-    float p11 = _DepthMipChain[COORD_TEXTURE2D_X(min(srcPixelUL + uint2(1u, 1u), srcLimit))];
+    float p00 = _ShadowmapMipChain[(min(srcPixelUL + uint2(0u, 0u), srcLimit))];
+    float p10 = _ShadowmapMipChain[(min(srcPixelUL + uint2(1u, 0u), srcLimit))];
+    float p01 = _ShadowmapMipChain[(min(srcPixelUL + uint2(0u, 1u), srcLimit))];
+    float p11 = _ShadowmapMipChain[(min(srcPixelUL + uint2(1u, 1u), srcLimit))];
     float4 depths = float4(p00, p10, p01, p11);
 
     // Select the fathest depth
     float minDepth = MIN_DEPTH(MIN_DEPTH(depths.x, depths.y), MIN_DEPTH(depths.z, depths.w));
 
-    _DepthMipChain[COORD_TEXTURE2D_X(dstOffset + dispatchThreadId.xy)] = minDepth;
+    _ShadowmapMipChain[(dstOffset + dispatchThreadId.xy)] = minDepth;
 }
+
+[numthreads(KERNEL_SIZE, KERNEL_SIZE, 1)]
+void KERNEL_NAME2(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+	UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
+	
+	
+}
+
 
 #undef MIN_DEPTH

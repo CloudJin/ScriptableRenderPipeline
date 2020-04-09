@@ -37,8 +37,12 @@ namespace UnityEngine.Rendering.HighDefinition
             public Shader colorPyramidPS;
             [Reload("Runtime/RenderPipeline/RenderPass/DepthPyramid.compute")]
             public ComputeShader depthPyramidCS;
+            [Reload("Runtime/RenderPipeline/RenderPass/ShadowMapPyramid.compute")]
+            public ComputeShader shadowmapPyramidCS;
             [Reload("Runtime/Core/CoreResources/GPUCopy.compute")]
             public ComputeShader copyChannelCS;
+            [Reload("Runtime/Core/CoreResources/GPUCopyTexture2D.compute")]
+            public ComputeShader copyTexture2DChannelCS;
             [Reload("Runtime/Lighting/ScreenSpaceLighting/ScreenSpaceReflections.compute")]
             public ComputeShader screenSpaceReflectionsCS;
             [Reload("Runtime/RenderPipeline/RenderPass/Distortion/ApplyDistortion.shader")]

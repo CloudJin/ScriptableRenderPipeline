@@ -10,6 +10,9 @@ namespace UnityEngine.Rendering.HighDefinition
         Material m_ColorPyramidPSMat;
         MaterialPropertyBlock m_PropertyBlock;
 
+        ComputeShader m_ShadowMapPyramidCS;
+        int m_ShadowmapDownsampleKernel;
+
         int m_DepthDownsampleKernel;
 
         int[] m_SrcOffset;
@@ -20,6 +23,9 @@ namespace UnityEngine.Rendering.HighDefinition
             m_TempColorTargets = new RTHandle[tmpTargetCount];
             m_TempDownsamplePyramid = new RTHandle[tmpTargetCount];
             m_DepthPyramidCS = defaultResources.shaders.depthPyramidCS;
+
+            m_ShadowMapPyramidCS = defaultResources.shaders.shadowmapPyramidCS;
+            m_ShadowmapDownsampleKernel = m_ShadowMapPyramidCS.FindKernel("KDepthDownsample8DualUav");
 
             m_DepthDownsampleKernel = m_DepthPyramidCS.FindKernel("KDepthDownsample8DualUav");
 
@@ -87,6 +93,49 @@ namespace UnityEngine.Rendering.HighDefinition
                 cmd.SetComputeTextureParam(cs, kernel, HDShaderIDs._DepthMipChain, texture);
 
                 cmd.DispatchCompute(cs, kernel, HDUtils.DivRoundUp(dstSize.x, 8), HDUtils.DivRoundUp(dstSize.y, 8), texture.volumeDepth);
+            }
+        }
+
+        public void RenderShadowmapPyramid(CommandBuffer cmd, RenderTexture texture, int cascade)
+        {
+            HDUtils.CheckRTCreated(texture);
+
+            var cs = m_ShadowMapPyramidCS;
+            int kernel = m_ShadowmapDownsampleKernel;
+            int width = texture.width / 2;
+            int height = texture.height / 2 / 2;
+            int mipWidth = width;
+            int mipHeight = height;
+            for (int j = 0; j != cascade; ++j)
+            {
+                Vector2Int srcOffset = new Vector2Int(j % 2 * width, j / 2 * height);
+                Vector2Int dstOffset = new Vector2Int(j % 2 * width, j / 2 * height + texture.height / 2);
+                Vector2Int mipSize = new Vector2Int(width, height);
+                for (int i = 1; i != 10; ++i)
+                {
+                    if (mipSize.x == 0 || mipSize.y == 0)
+                        break;
+
+                    m_SrcOffset[0] = srcOffset.x;
+                    m_SrcOffset[1] = srcOffset.y;
+                    m_SrcOffset[2] = srcOffset.x + mipSize.x;
+                    m_SrcOffset[3] = srcOffset.y + mipSize.y;
+
+                    m_DstOffset[0] = dstOffset.x;
+                    m_DstOffset[1] = dstOffset.y;
+                    m_DstOffset[2] = 0;
+                    m_DstOffset[3] = 0;
+
+                    cmd.SetComputeIntParams(cs, "_ShadowmapSrcOffsetAndLimit", m_SrcOffset);
+                    cmd.SetComputeIntParams(cs, "_ShadowmapDstOffset", m_DstOffset);
+                    cmd.SetComputeTextureParam(cs, kernel, "_ShadowmapMipChain", texture);
+                    cmd.DispatchCompute(cs, kernel, HDUtils.DivRoundUp(mipSize.x, 8), HDUtils.DivRoundUp(mipSize.y, 8), texture.volumeDepth);
+
+                    mipSize /= 2;
+                    srcOffset = dstOffset;
+                    dstOffset.x = srcOffset.x + mipSize.x * (i % 2);
+                    dstOffset.y = srcOffset.y + mipSize.y * ((i + 1) % 2);
+                }
             }
         }
 

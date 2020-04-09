@@ -218,6 +218,9 @@ namespace UnityEngine.Rendering.HighDefinition
         HDShadowAtlas               m_Atlas;
         HDShadowAtlas               m_AreaLightShadowAtlas;
 
+        RTHandle                    m_CascadeAtlasPyramid;
+        
+
         int                         m_MaxShadowRequests;
         int                         m_ShadowRequestCount;
         int                         m_CascadeCount;
@@ -227,6 +230,8 @@ namespace UnityEngine.Rendering.HighDefinition
 
         public static HDShadowManager instance { get { return s_Instance; } }
 
+        public HDShadowAtlas CascadeAtlas { get { return m_CascadeAtlas; } }
+        public RTHandle CascadeAtlasPyramid { get { return m_CascadeAtlasPyramid; } }
 
         private HDShadowManager()
         {}
@@ -290,7 +295,22 @@ namespace UnityEngine.Rendering.HighDefinition
             if (cascadeCount > 2)
                 atlasResolution.y *= 2;
 
-            m_CascadeAtlas.UpdateSize(atlasResolution);
+            if (m_CascadeAtlas.UpdateSize(atlasResolution, cascadeCount))
+                UpdateCascadeAtlasShadowPyramid();
+        }
+
+        void UpdateCascadeAtlasShadowPyramid()
+        {
+            if (m_CascadeAtlasPyramid != null) 
+                m_CascadeAtlasPyramid.Release();
+
+            m_CascadeAtlasPyramid = RTHandles.Alloc(m_CascadeAtlas.width,
+                m_CascadeAtlas.height * 2,
+                filterMode: FilterMode.Point,
+                colorFormat: UnityEngine.Experimental.Rendering.GraphicsFormat.R32_SFloat,
+                enableRandomWrite: true,
+                dimension: m_CascadeAtlas.renderTarget.rt.dimension,
+                name: "ShadowMapAtlasOC");
         }
 
         internal int ReserveShadowResolutions(Vector2 resolution, ShadowMapType shadowMapType, int lightID, int index, bool canBeCached, out int cachedRequestIdx)
@@ -775,6 +795,8 @@ namespace UnityEngine.Rendering.HighDefinition
             m_Atlas.Release();
             m_AreaLightShadowAtlas.Release();
             m_CascadeAtlas.Release();
+            if (m_CascadeAtlasPyramid != null)
+                m_CascadeAtlasPyramid.Release();
         }
     }
 }
