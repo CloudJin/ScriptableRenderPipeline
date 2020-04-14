@@ -30,7 +30,7 @@
 #define SHADOWS_SCREEN 1
 #else
 #define SHADOWS_SCREEN 0
-#endif
+#endif  
 #endif
 
 SCREENSPACE_TEXTURE(_ScreenSpaceShadowmapTexture);
