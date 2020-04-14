@@ -96,7 +96,7 @@ void InitializeInputData(Varyings IN, half3 normalTS, out InputData input)
     input.viewDirectionWS = viewDirWS;
 
 #if defined(REQUIRES_VERTEX_SHADOW_COORD_INTERPOLATOR)
-    input.shadowCoord = input.shadowCoord;
+    input.shadowCoord = IN.shadowCoord;
 #elif defined(MAIN_LIGHT_CALCULATE_SHADOWS)
     input.shadowCoord = TransformWorldToShadowCoord(input.positionWS);
 #else

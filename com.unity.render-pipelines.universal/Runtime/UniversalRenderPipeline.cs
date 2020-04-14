@@ -767,7 +767,10 @@ namespace UnityEngine.Rendering.Universal
 
         static void InitializeShadowData(UniversalRenderPipelineAsset settings, NativeArray<VisibleLight> visibleLights, bool mainLightCastShadows, bool additionalLightsCastShadows, out ShadowData shadowData)
         {
+            shadowData = new ShadowData();
             m_ShadowBiasData.Clear();
+            m_MainLightShadowMatrices.Clear(); //seongdae;vxsm
+            m_CascadeDistances.Clear(); //seongdae;vxsm
 
             for (int i = 0; i < visibleLights.Length; ++i)
             {
@@ -790,10 +793,16 @@ namespace UnityEngine.Rendering.Universal
 
             shadowData.bias = m_ShadowBiasData;
             shadowData.supportsMainLightShadows = SystemInfo.supportsShadows && settings.supportsMainLightShadows && mainLightCastShadows;
+            shadowData.supportsMainLightVxShadows = SystemInfo.graphicsDeviceType != GraphicsDeviceType.OpenGLES2 && shadowData.supportsMainLightShadows; //seongdae;vxsm
 
-            // We no longer use screen space shadows in URP.
-            // This change allows us to have particles & transparent objects receive shadows.
-            shadowData.requiresScreenSpaceShadowResolve = false;// shadowData.supportsMainLightShadows && supportsScreenSpaceShadows && settings.shadowCascadeOption != ShadowCascadesOption.NoCascades;
+            // Until we can have keyword stripping forcing single cascade hard shadows on gles2
+            bool supportsScreenSpaceShadows = SystemInfo.graphicsDeviceType != GraphicsDeviceType.OpenGLES2;
+
+            // we resolve shadows in screenspace when cascades are enabled to save ALU as computing cascade index + shadowCoord on fragment is expensive
+            shadowData.requiresScreenSpaceShadowResolve = shadowData.supportsMainLightShadows && supportsScreenSpaceShadows && settings.shadowCascadeOption != ShadowCascadesOption.NoCascades;
+
+            // we compute shadows in screenspace
+            shadowData.requiresScreenSpaceShadowCompute = shadowData.supportsMainLightVxShadows && supportsScreenSpaceShadows; //seongdae;vxsm
 
             int shadowCascadesCount;
             switch (settings.shadowCascadeOption)
@@ -834,6 +843,9 @@ namespace UnityEngine.Rendering.Universal
             shadowData.additionalLightsShadowmapWidth = shadowData.additionalLightsShadowmapHeight = settings.additionalLightsShadowmapResolution;
             shadowData.supportsSoftShadows = settings.supportsSoftShadows && (shadowData.supportsMainLightShadows || shadowData.supportsAdditionalLightShadows);
             shadowData.shadowmapDepthBufferBits = 16;
+
+            shadowData.mainLightShadowMatrices = m_MainLightShadowMatrices; //seongdae;vxsm
+            shadowData.cascadeSplitDistances = m_CascadeDistances; //seongdae;vxsm
         }
 
         static void InitializePostProcessingData(UniversalRenderPipelineAsset settings, out PostProcessingData postProcessingData)
