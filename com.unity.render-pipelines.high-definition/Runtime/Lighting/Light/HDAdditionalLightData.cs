@@ -1525,7 +1525,7 @@ namespace UnityEngine.Rendering.HighDefinition
 
         private void UpdateDirectionalShadowRequest(HDShadowManager manager, VisibleLight visibleLight, CullingResults cullResults, Vector2 viewportSize, int requestIndex, int lightIndex, Vector3 cameraPos, HDShadowRequest shadowRequest, out Matrix4x4 invViewProjection)
         {
-            Vector4 cullingSphere;
+            Vector4 cullingSphere;  
             float nearPlaneOffset = QualitySettings.shadowNearPlaneOffset;
 
             HDShadowUtils.ExtractDirectionalLightData(
@@ -1545,7 +1545,14 @@ namespace UnityEngine.Rendering.HighDefinition
                 cullingSphere.z -= cameraPos.z;
             }
 
-            manager.UpdateCascade(requestIndex, cullingSphere, m_ShadowSettings.cascadeShadowBorders[requestIndex]);
+            Vector3 cascadeShadowSplitsRatio = new Vector3();
+            cascadeShadowSplitsRatio.x = m_ShadowSettings.cascadeShadowSplits[0];
+            cascadeShadowSplitsRatio.y = m_ShadowSettings.cascadeShadowSplits[1];
+            cascadeShadowSplitsRatio.z = m_ShadowSettings.cascadeShadowSplits[2];
+            manager.UpdateCascade(requestIndex,
+                cullingSphere,
+                m_ShadowSettings.cascadeShadowBorders[requestIndex],
+                cascadeShadowSplitsRatio);
         }
 
         // Must return the first executed shadow request
@@ -1566,6 +1573,7 @@ namespace UnityEngine.Rendering.HighDefinition
             cachedDataIsValid = cachedDataIsValid || (legacyLight.type == LightType.Directional);
             shadowIsCached = shadowIsCached && (hasCachedSlotInAtlas && cachedDataIsValid || legacyLight.type == LightType.Directional);
 
+            float[] shadowResolution = new float[4];
             for (int index = 0; index < count; index++)
             {
                 var         shadowRequest = shadowRequests[index];
@@ -1618,6 +1626,7 @@ namespace UnityEngine.Rendering.HighDefinition
                                 out shadowRequest.view, out invViewProjection, out shadowRequest.deviceProjectionYFlip,
                                 out shadowRequest.deviceProjection, out shadowRequest.splitData
                             );
+                            shadowResolution[index] = viewportSize.x;
                             break;
                         case HDLightType.Directional:
                             UpdateDirectionalShadowRequest(manager, visibleLight, cullResults, viewportSize, index, lightIndex, cameraPos, shadowRequest, out invViewProjection);
@@ -1658,6 +1667,12 @@ namespace UnityEngine.Rendering.HighDefinition
                 shadowRequestCount++;
             }
 
+            if (shadowResolution[0] > 0.0f)
+            {
+                Vector4 resolution = new Vector4();
+                resolution.Set(shadowResolution[0], shadowResolution[1], shadowResolution[2], shadowResolution[3]);
+                manager.ShadowResolution = resolution;
+            }
             return firstShadowRequestIndex;
         }
 

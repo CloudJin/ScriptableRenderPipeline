@@ -1292,8 +1292,9 @@ namespace UnityEngine.Rendering.HighDefinition
                             out var cullingParameters);
 
                     ComputeShader cs = defaultResources?.shaders.hiZBufferComputeShader;
+                    ComputeShader shadowCS = defaultResources?.shaders.hiZBufferShadowComputeShader;
                     cs.name = "HiZBufferOcclusionBuffer";
-                    renderContext.AssignHiZBufferComputeShader(cs);
+                    renderContext.AssignHiZBufferComputeShader(cs, shadowCS);
                     if (camera.cameraType == CameraType.Game)
                     {
                         cs.SetVector(HDShaderIDs._ZBufferParams, hdCamera.zBufferParams);

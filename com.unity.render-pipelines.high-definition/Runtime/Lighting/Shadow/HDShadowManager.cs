@@ -232,6 +232,8 @@ namespace UnityEngine.Rendering.HighDefinition
 
         public HDShadowAtlas CascadeAtlas { get { return m_CascadeAtlas; } }
         public RTHandle CascadeAtlasPyramid { get { return m_CascadeAtlasPyramid; } }
+        public Vector3 CascadeShadowSplitsRatio { get; set; }
+        public Vector4 ShadowResolution { get; set; }
 
         private HDShadowManager()
         {}
@@ -504,7 +506,7 @@ namespace UnityEngine.Rendering.HighDefinition
             };
         }
 
-        public void UpdateCascade(int cascadeIndex, Vector4 cullingSphere, float border)
+        public void UpdateCascade(int cascadeIndex, Vector4 cullingSphere, float border, Vector3 cascadeShadowSplitsRatio)
         {
             if (cullingSphere.w != float.NegativeInfinity)
             {
@@ -512,7 +514,7 @@ namespace UnityEngine.Rendering.HighDefinition
             }
 
             m_CascadeCount = Mathf.Max(m_CascadeCount, cascadeIndex);
-
+            CascadeShadowSplitsRatio = cascadeShadowSplitsRatio;
             unsafe
             {
                 fixed (float * sphereCascadesBuffer = m_DirectionalShadowData.sphereCascades)
@@ -571,6 +573,12 @@ namespace UnityEngine.Rendering.HighDefinition
         public void UpdateCullingParameters(ref ScriptableCullingParameters cullingParams, float maxShadowDistance)
         {
             cullingParams.shadowDistance = Mathf.Min(maxShadowDistance, cullingParams.shadowDistance);
+            ShadowCullProperty property;
+            property.cascadeCount = m_CascadeAtlas.cascadeCount;
+            property.shadowNearPlaneOffset = QualitySettings.shadowNearPlaneOffset;
+            property.shadowCascade4Split = CascadeShadowSplitsRatio;
+            property.shadowResolution = ShadowResolution;
+            cullingParams.shadowCullProperties = property;
         }
 
         public void LayoutShadowMaps(LightingDebugSettings lightingDebugSettings)
