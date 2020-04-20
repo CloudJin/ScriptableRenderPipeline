@@ -799,7 +799,7 @@ namespace UnityEngine.Rendering.Universal
             bool supportsScreenSpaceShadows = SystemInfo.graphicsDeviceType != GraphicsDeviceType.OpenGLES2;
 
             // we resolve shadows in screenspace when cascades are enabled to save ALU as computing cascade index + shadowCoord on fragment is expensive
-            shadowData.requiresScreenSpaceShadowResolve = shadowData.supportsMainLightShadows && supportsScreenSpaceShadows && settings.shadowCascadeOption != ShadowCascadesOption.NoCascades;
+            shadowData.requiresScreenSpaceShadowResolve = shadowData.supportsMainLightShadows && supportsScreenSpaceShadows /*&& settings.shadowCascadeOption != ShadowCascadesOption.NoCascades*/;
 
             // we compute shadows in screenspace
             shadowData.requiresScreenSpaceShadowCompute = shadowData.supportsMainLightVxShadows && supportsScreenSpaceShadows; //seongdae;vxsm
