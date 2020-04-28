@@ -21,9 +21,15 @@ namespace UnityEditor.Rendering.HighDefinition
 
             if (RenderPipelineManager.currentPipeline == null)
                 return;
-            var mgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager;
-            var info = mgr.GetDepthBufferMipChainInfoRef();
-            DrawDebugView(mgr.GetDepthTextureOC(), info.mipLevelSizes[0].x, info.mipLevelSizes[0].y);
+            if (m_hdCamera == null)
+                m_hdCamera = HDCamera.GetOrCreate(target as Camera);
+
+            //             var mgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager;
+            //             var info = mgr.GetDepthBufferMipChainInfoRef();
+            //             DrawDebugView(mgr.GetDepthTextureOC(), info.mipLevelSizes[0].x, info.mipLevelSizes[0].y);
+
+            var mgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).shadowManager;
+            DrawDebugView(mgr.CascadeAtlasPyramid, m_hdCamera.actualWidth, m_hdCamera.actualHeight);
         }
 
 
@@ -48,9 +54,7 @@ namespace UnityEditor.Rendering.HighDefinition
                 return;
             if (m_debugMaterial == null)
                 m_debugMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/DebuggingZBuffer.mat");
-            if (m_hdCamera == null)
-                m_hdCamera = HDCamera.GetOrCreate(target as Camera);
-
+            
             FetchDebugInfo(m_dstObj.name);
 
             if (m_dstTexture == null || m_dstTexture.width != renderTexture.width || m_dstTexture.height != renderTexture.height)
@@ -74,12 +78,16 @@ namespace UnityEditor.Rendering.HighDefinition
             EditorGUI.DropShadowLabel(labelRect2, label2, EditorStyles.wordWrappedLabel);
 
             y += yOffset;
-            Vector2 cornerMin = new Vector2();
+            Vector2 cornerMin = new Vector2(); 
             cornerMin.x = m_debugInfo.minMaxXY.x * m_debugInfo.mipmapOffsetSize.z + m_debugInfo.mipmapOffsetSize.x;
             cornerMin.y = m_debugInfo.minMaxXY.y * m_debugInfo.mipmapOffsetSize.w + m_debugInfo.mipmapOffsetSize.y;
-            Vector2 cornerMax = new Vector2();
+            //cornerMin.x = m_debugInfo.minMaxXY.x;
+            //cornerMin.y = m_debugInfo.minMaxXY.y;
+            Vector2 cornerMax = new Vector2();  
             cornerMax.x = m_debugInfo.minMaxXY.z * m_debugInfo.mipmapOffsetSize.z + m_debugInfo.mipmapOffsetSize.x;
             cornerMax.y = m_debugInfo.minMaxXY.w * m_debugInfo.mipmapOffsetSize.w + m_debugInfo.mipmapOffsetSize.y;
+            //cornerMax.x = m_debugInfo.minMaxXY.z;
+            //cornerMax.y = m_debugInfo.minMaxXY.w;
             var label3 = string.Format("MinCorner: ({0:f1}, {1:f1})", cornerMin.x, cornerMin.y);
             Rect labelRect3 = new Rect(0, y, 200, 100);
             EditorGUI.DropShadowLabel(labelRect3, label3, EditorStyles.wordWrappedLabel);
@@ -114,6 +122,8 @@ namespace UnityEditor.Rendering.HighDefinition
                 (m_debugInfo.minMaxXY.z - m_debugInfo.minMaxXY.x) * size,
                 (m_debugInfo.minMaxXY.w - m_debugInfo.minMaxXY.y) * size);
 
+            position.width = Mathf.Max(1, position.width);
+            position.height = Mathf.Max(1, position.height);
             Sprite sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
             GUI.DrawTexture(position, sprite.texture);
 

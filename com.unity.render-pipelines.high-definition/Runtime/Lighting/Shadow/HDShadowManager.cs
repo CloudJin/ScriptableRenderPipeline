@@ -219,7 +219,8 @@ namespace UnityEngine.Rendering.HighDefinition
         HDShadowAtlas               m_AreaLightShadowAtlas;
 
         RTHandle                    m_CascadeAtlasPyramid;
-        
+        Matrix4x4[]                 m_viewProjMatrix = new Matrix4x4[4];
+
 
         int                         m_MaxShadowRequests;
         int                         m_ShadowRequestCount;
@@ -233,7 +234,23 @@ namespace UnityEngine.Rendering.HighDefinition
         public HDShadowAtlas CascadeAtlas { get { return m_CascadeAtlas; } }
         public RTHandle CascadeAtlasPyramid { get { return m_CascadeAtlasPyramid; } }
         public Vector3 CascadeShadowSplitsRatio { get; set; }
-        public Vector4 ShadowResolution { get; set; }
+        public int ShadowResolution { get; set; }
+        public bool NeedUpdateMipmapOffset { get; set; }
+        public int CascadeCount { get { return m_CascadeCount; } }
+        public int CascadeCountCache { get; set; }
+
+        public void SetViewProjMatrix(int index, Matrix4x4 matrix)
+        {
+            if (index < 4)
+                m_viewProjMatrix[index] = matrix;
+        }
+        public void IdentifyViewProjMatrix()
+        {
+            for (int i = 0; i != m_viewProjMatrix.Length; ++i)
+            {
+                m_viewProjMatrix[i] = Matrix4x4.identity;
+            }
+        }
 
         private HDShadowManager()
         {}
@@ -260,12 +277,22 @@ namespace UnityEngine.Rendering.HighDefinition
             HDShadowAtlas.BlurAlgorithm cascadeBlur = GetDirectionalShadowAlgorithm() == DirectionalShadowAlgorithm.IMS ? HDShadowAtlas.BlurAlgorithm.IM : HDShadowAtlas.BlurAlgorithm.None;
             m_CascadeAtlas = new HDShadowAtlas(renderPipelineResources, 1, 1, HDShaderIDs._ShadowmapCascadeAtlas, HDShaderIDs._CascadeShadowAtlasSize, clearMaterial, maxShadowRequests, cascadeBlur, depthBufferBits: directionalShadowDepthBits, name: "Cascade Shadow Map Atlas");
 
+            m_CascadeAtlasPyramid = RTHandles.Alloc(m_CascadeAtlas.width,
+                m_CascadeAtlas.height + m_CascadeAtlas.height / 2,
+                filterMode: FilterMode.Point,
+                colorFormat: UnityEngine.Experimental.Rendering.GraphicsFormat.R32_SFloat,
+                enableRandomWrite: true,
+                dimension: m_CascadeAtlas.renderTarget.rt.dimension,
+                name: "ShadowMapAtlasOC");
+
             m_AreaLightShadowAtlas = new HDShadowAtlas(renderPipelineResources, areaLightAtlasInfo.shadowAtlasResolution, areaLightAtlasInfo.shadowAtlasResolution, HDShaderIDs._AreaLightShadowmapAtlas, HDShaderIDs._AreaShadowAtlasSize, clearMaterial, maxShadowRequests, HDShadowAtlas.BlurAlgorithm.EVSM, depthBufferBits: areaLightAtlasInfo.shadowAtlasDepthBits, name: "Area Light Shadow Map Atlas", momentAtlasShaderID: HDShaderIDs._AreaShadowmapMomentAtlas);
 
             m_ShadowDataBuffer = new ComputeBuffer(maxShadowRequests, System.Runtime.InteropServices.Marshal.SizeOf(typeof(HDShadowData)));
             m_DirectionalShadowDataBuffer = new ComputeBuffer(1, System.Runtime.InteropServices.Marshal.SizeOf(typeof(HDDirectionalShadowData)));
 
             m_MaxShadowRequests = maxShadowRequests;
+
+            IdentifyViewProjMatrix();
         }
 
         public static DirectionalShadowAlgorithm GetDirectionalShadowAlgorithm()
@@ -297,8 +324,18 @@ namespace UnityEngine.Rendering.HighDefinition
             if (cascadeCount > 2)
                 atlasResolution.y *= 2;
 
+            ShadowResolution = resolution;
             if (m_CascadeAtlas.UpdateSize(atlasResolution, cascadeCount))
                 UpdateCascadeAtlasShadowPyramid();
+        }
+
+        public void UpdateDirectionalShadowCascade(int cascadeCount)
+        {
+            if (cascadeCount == CascadeCountCache)
+                return;
+
+            CascadeCountCache = cascadeCount;
+            NeedUpdateMipmapOffset = true;
         }
 
         void UpdateCascadeAtlasShadowPyramid()
@@ -307,13 +344,16 @@ namespace UnityEngine.Rendering.HighDefinition
                 m_CascadeAtlasPyramid.Release();
 
             m_CascadeAtlasPyramid = RTHandles.Alloc(m_CascadeAtlas.width,
-                m_CascadeAtlas.height * 2,
+                m_CascadeAtlas.height + m_CascadeAtlas.height / 2,
                 filterMode: FilterMode.Point,
                 colorFormat: UnityEngine.Experimental.Rendering.GraphicsFormat.R32_SFloat,
                 enableRandomWrite: true,
                 dimension: m_CascadeAtlas.renderTarget.rt.dimension,
                 name: "ShadowMapAtlasOC");
+
+            NeedUpdateMipmapOffset = true;
         }
+
 
         internal int ReserveShadowResolutions(Vector2 resolution, ShadowMapType shadowMapType, int lightID, int index, bool canBeCached, out int cachedRequestIdx)
         {
@@ -495,8 +535,8 @@ namespace UnityEngine.Rendering.HighDefinition
                 }
                 case ShadowMapType.CascadedDirectional:
                 {
-                    m_CascadeAtlas.AddShadowRequest(shadowRequest);
-                    break;
+                    m_CascadeAtlas.AddShadowRequest(shadowRequest); 
+                    break;  
                 }
                 case ShadowMapType.AreaLightAtlas:
                 {
@@ -573,11 +613,15 @@ namespace UnityEngine.Rendering.HighDefinition
         public void UpdateCullingParameters(ref ScriptableCullingParameters cullingParams, float maxShadowDistance)
         {
             cullingParams.shadowDistance = Mathf.Min(maxShadowDistance, cullingParams.shadowDistance);
-            ShadowCullProperty property;
+            ShadowCullProperty property = new ShadowCullProperty();
             property.cascadeCount = m_CascadeAtlas.cascadeCount;
             property.shadowNearPlaneOffset = QualitySettings.shadowNearPlaneOffset;
             property.shadowCascade4Split = CascadeShadowSplitsRatio;
-            property.shadowResolution = ShadowResolution;
+            property.shadowResolution = new Vector4(ShadowResolution, ShadowResolution, ShadowResolution, ShadowResolution);
+            property.viewProjMatrix1 = m_viewProjMatrix[0];
+            property.viewProjMatrix2 = m_viewProjMatrix[1];
+            property.viewProjMatrix3 = m_viewProjMatrix[2];
+            property.viewProjMatrix4 = m_viewProjMatrix[3];
             cullingParams.shadowCullProperties = property;
         }
 

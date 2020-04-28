@@ -523,8 +523,10 @@ namespace UnityEngine.Rendering.HighDefinition
             if (parameters.debugClearAtlas)
                 CoreUtils.DrawFullScreen(cmd, parameters.clearMaterial, null, 0);
 
-            foreach (var shadowRequest in parameters.shadowRequests)
+            //foreach (var shadowRequest in parameters.shadowRequests)
+            for (int i = 0; i != parameters.shadowRequests.Count; ++i)
             {
+                var shadowRequest = parameters.shadowRequests[i];
                 if (shadowRequest.shouldUseCachedShadow)
                     continue;
 

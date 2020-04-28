@@ -96,42 +96,51 @@ namespace UnityEngine.Rendering.HighDefinition
             }
         }
 
-        public void RenderShadowmapPyramid(CommandBuffer cmd, RenderTexture texture, int cascade)
+        public void RenderShadowmapPyramid(CommandBuffer cmd, RenderTexture texture, int atlasWidth, int atlasHeight, int cascade)
         {
             HDUtils.CheckRTCreated(texture);
 
             var cs = m_ShadowMapPyramidCS;
             int kernel = m_ShadowmapDownsampleKernel;
-            int width = texture.width / 2;
-            int height = texture.height / 2 / 2;
-            int mipWidth = width;
-            int mipHeight = height;
+            int[] srcOffsetBuffer = new int[4];
+            int[] dstOffsetBuffer = new int[4];
+            int mipWidth = atlasWidth;
+            int mipHeight = atlasHeight;
+            if (cascade > 2)
+            {
+                mipWidth = atlasWidth / 2;
+                mipHeight = atlasHeight / 2;
+            }
+            else if (cascade == 2)
+            {
+                mipWidth = atlasWidth / 2;
+            }
             for (int j = 0; j != cascade; ++j)
             {
-                Vector2Int srcOffset = new Vector2Int(j % 2 * width, j / 2 * height);
-                Vector2Int dstOffset = new Vector2Int(j % 2 * width, j / 2 * height + texture.height / 2);
-                Vector2Int mipSize = new Vector2Int(width, height);
+                Vector2Int srcOffset = new Vector2Int(j % 2 * mipWidth, j / 2 * (mipHeight));
+                Vector2Int dstOffset = new Vector2Int(j % 2 * mipWidth, j / 2 * (mipHeight / 2) + mipHeight * (1 + (cascade - 1) / 2));
+                Vector2Int mipSize = new Vector2Int(mipWidth, mipHeight);
                 for (int i = 1; i != 10; ++i)
-                {
+                { 
                     if (mipSize.x == 0 || mipSize.y == 0)
                         break;
 
-                    m_SrcOffset[0] = srcOffset.x;
-                    m_SrcOffset[1] = srcOffset.y;
-                    m_SrcOffset[2] = srcOffset.x + mipSize.x;
-                    m_SrcOffset[3] = srcOffset.y + mipSize.y;
+                    srcOffsetBuffer[0] = srcOffset.x;
+                    srcOffsetBuffer[1] = srcOffset.y;
+                    srcOffsetBuffer[2] = srcOffset.x + mipSize.x;
+                    srcOffsetBuffer[3] = srcOffset.y + mipSize.y;
 
-                    m_DstOffset[0] = dstOffset.x;
-                    m_DstOffset[1] = dstOffset.y;
-                    m_DstOffset[2] = 0;
-                    m_DstOffset[3] = 0;
+                    dstOffsetBuffer[0] = dstOffset.x;
+                    dstOffsetBuffer[1] = dstOffset.y;
+                    dstOffsetBuffer[2] = 0;
+                    dstOffsetBuffer[3] = 0;
 
-                    cmd.SetComputeIntParams(cs, "_ShadowmapSrcOffsetAndLimit", m_SrcOffset);
-                    cmd.SetComputeIntParams(cs, "_ShadowmapDstOffset", m_DstOffset);
+                    cmd.SetComputeIntParams(cs, "_ShadowmapSrcOffsetAndLimit", srcOffsetBuffer);
+                    cmd.SetComputeIntParams(cs, "_ShadowmapDstOffset", dstOffsetBuffer);
                     cmd.SetComputeTextureParam(cs, kernel, "_ShadowmapMipChain", texture);
+                    mipSize /= 2;
                     cmd.DispatchCompute(cs, kernel, HDUtils.DivRoundUp(mipSize.x, 8), HDUtils.DivRoundUp(mipSize.y, 8), texture.volumeDepth);
 
-                    mipSize /= 2;
                     srcOffset = dstOffset;
                     dstOffset.x = srcOffset.x + mipSize.x * (i % 2);
                     dstOffset.y = srcOffset.y + mipSize.y * ((i + 1) % 2);

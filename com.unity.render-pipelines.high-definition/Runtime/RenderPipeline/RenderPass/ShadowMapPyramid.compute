@@ -34,24 +34,21 @@ void KERNEL_NAME(uint3 dispatchThreadId : SV_DispatchThreadID)
     // Upper-left pixel coordinate of quad that this thread will read
     uint2 srcPixelUL = srcOffset + (dispatchThreadId.xy << 1);
 
-    float p00 = _ShadowmapMipChain[(min(srcPixelUL + uint2(0u, 0u), srcLimit))];
-    float p10 = _ShadowmapMipChain[(min(srcPixelUL + uint2(1u, 0u), srcLimit))];
-    float p01 = _ShadowmapMipChain[(min(srcPixelUL + uint2(0u, 1u), srcLimit))];
-    float p11 = _ShadowmapMipChain[(min(srcPixelUL + uint2(1u, 1u), srcLimit))];
+    // float p00 = _ShadowmapMipChain[(min(srcPixelUL + uint2(0u, 0u), srcLimit))];
+    // float p10 = _ShadowmapMipChain[(min(srcPixelUL + uint2(1u, 0u), srcLimit))];
+    // float p01 = _ShadowmapMipChain[(min(srcPixelUL + uint2(0u, 1u), srcLimit))];
+    // float p11 = _ShadowmapMipChain[(min(srcPixelUL + uint2(1u, 1u), srcLimit))];
+	
+	float p00 = _ShadowmapMipChain[srcPixelUL + uint2(0u, 0u)];
+    float p01 = _ShadowmapMipChain[srcPixelUL + uint2(0u, 1u)];
+    float p10 = _ShadowmapMipChain[srcPixelUL + uint2(1u, 0u)];
+    float p11 = _ShadowmapMipChain[srcPixelUL + uint2(1u, 1u)];
     float4 depths = float4(p00, p10, p01, p11);
 
     // Select the fathest depth
     float minDepth = MIN_DEPTH(MIN_DEPTH(depths.x, depths.y), MIN_DEPTH(depths.z, depths.w));
 
     _ShadowmapMipChain[(dstOffset + dispatchThreadId.xy)] = minDepth;
-}
-
-[numthreads(KERNEL_SIZE, KERNEL_SIZE, 1)]
-void KERNEL_NAME2(uint3 dispatchThreadId : SV_DispatchThreadID)
-{
-	UNITY_XR_ASSIGN_VIEW_INDEX(dispatchThreadId.z);
-	
-	
 }
 
 

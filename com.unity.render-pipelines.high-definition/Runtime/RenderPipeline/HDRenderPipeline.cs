@@ -80,6 +80,8 @@ namespace UnityEngine.Rendering.HighDefinition
         readonly SharedRTManager m_SharedRTManager = new SharedRTManager();
         internal SharedRTManager sharedRTManager { get { return m_SharedRTManager; } }
 
+        internal HDShadowManager shadowManager { get { return m_ShadowManager; } }
+
         readonly PostProcessSystem m_PostProcessSystem;
         readonly XRSystem m_XRSystem;
 
@@ -1043,6 +1045,7 @@ namespace UnityEngine.Rendering.HighDefinition
                 {
                     int width = m_ShadowManager.CascadeAtlas.width;
                     int height = m_ShadowManager.CascadeAtlas.height;
+                    CoreUtils.SetRenderTarget(cmd, m_ShadowManager.CascadeAtlasPyramid, ClearFlag.Color);
                     m_GPUCopyShadowmap.SampleCopyChannel_xyzw2x(cmd,
                         m_ShadowManager.CascadeAtlas.renderTarget,
                         m_ShadowManager.CascadeAtlasPyramid,
@@ -1310,6 +1313,19 @@ namespace UnityEngine.Rendering.HighDefinition
                             info.mipLevelSizes[0].x,
                             info.mipLevelSizes[0].y,
                             m_SharedRTManager.GetDepthBufferMipChainInfoRef().mipLevelCount);
+                    }
+
+                    renderContext.AssignDirectionalShadowmapPyramidTexture(m_ShadowManager.CascadeAtlasPyramid,
+                        m_ShadowManager.ShadowResolution,
+                        m_ShadowManager.CascadeCountCache);
+                    if (m_ShadowManager.NeedUpdateMipmapOffset)
+                    {
+                        
+                        renderContext.RecalculateDirectionalShadowmapMipmapOffset(
+                            m_ShadowManager.CascadeAtlasPyramid.rt.width,
+                            m_ShadowManager.CascadeAtlasPyramid.rt.height,
+                            m_ShadowManager.CascadeCountCache);
+                        m_ShadowManager.NeedUpdateMipmapOffset = false;
                     }
 
 
@@ -3820,9 +3836,14 @@ namespace UnityEngine.Rendering.HighDefinition
         {
             using (new ProfilingSample(cmd, "Generate ShadowMap Pyramid", CustomSamplerId.DepthPyramid.GetSampler()))
             {
-                m_MipGenerator.RenderShadowmapPyramid(cmd,
-                    m_ShadowManager.CascadeAtlasPyramid,
-                    m_ShadowManager.CascadeAtlas.cascadeCount);
+                if (m_ShadowManager.CascadeAtlasPyramid != null)
+                {
+                    m_MipGenerator.RenderShadowmapPyramid(cmd,
+                        m_ShadowManager.CascadeAtlasPyramid,
+                        m_ShadowManager.CascadeAtlas.width,
+                        m_ShadowManager.CascadeAtlas.height,
+                        m_ShadowManager.CascadeAtlas.cascadeCount);
+                }
             }
         }
 

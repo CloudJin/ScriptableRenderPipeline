@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 218638059169135575}
   - component: {fileID: 7319470438142740325}
   m_Layer: 0
-  m_Name: Capsule
+  m_Name: DummyTree
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -59,7 +59,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 73c176f402d2c2f4d929aa5da7585d17, type: 2}
+  - {fileID: 2100000, guid: 7ba1c0088f61a51449fa0f1cb8d2a154, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
