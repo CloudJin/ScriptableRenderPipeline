@@ -1632,7 +1632,8 @@ namespace UnityEngine.Rendering.HighDefinition
                             if (hdCamera.camera.cameraType == CameraType.Game)
                             {
                                 Matrix4x4 viewProjection = shadowRequest.deviceProjection * shadowRequest.view;
-                                manager.SetViewProjMatrix(index, viewProjection); 
+                                manager.SetLightViewProjMatrix(index, viewProjection, invViewProjection);
+                                //manager.SetLightViewProjMatrix(index, viewProjection, shadowRequest.shadowToWorld.transpose);
                             }
                             break;
                         case HDLightType.Area:

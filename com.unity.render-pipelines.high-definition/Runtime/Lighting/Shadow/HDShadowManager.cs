@@ -220,6 +220,7 @@ namespace UnityEngine.Rendering.HighDefinition
 
         RTHandle                    m_CascadeAtlasPyramid;
         Matrix4x4[]                 m_viewProjMatrix = new Matrix4x4[4];
+        Matrix4x4[]                 m_shadowToWorld = new Matrix4x4[4];
 
 
         int                         m_MaxShadowRequests;
@@ -239,16 +240,20 @@ namespace UnityEngine.Rendering.HighDefinition
         public int CascadeCount { get { return m_CascadeCount; } }
         public int CascadeCountCache { get; set; }
 
-        public void SetViewProjMatrix(int index, Matrix4x4 matrix)
+        public void SetLightViewProjMatrix(int index, Matrix4x4 matrix, Matrix4x4 shadowToWorld)
         {
             if (index < 4)
+            {
                 m_viewProjMatrix[index] = matrix;
+                m_shadowToWorld[index] = shadowToWorld;
+            }
         }
         public void IdentifyViewProjMatrix()
         {
             for (int i = 0; i != m_viewProjMatrix.Length; ++i)
             {
                 m_viewProjMatrix[i] = Matrix4x4.identity;
+                m_shadowToWorld[i] = Matrix4x4.identity;
             }
         }
 
@@ -622,6 +627,10 @@ namespace UnityEngine.Rendering.HighDefinition
             property.viewProjMatrix2 = m_viewProjMatrix[1];
             property.viewProjMatrix3 = m_viewProjMatrix[2];
             property.viewProjMatrix4 = m_viewProjMatrix[3];
+            property.shadowToWorld1 = m_shadowToWorld[0];
+            property.shadowToWorld2 = m_shadowToWorld[1];
+            property.shadowToWorld3 = m_shadowToWorld[2];
+            property.shadowToWorld4 = m_shadowToWorld[3];
             cullingParams.shadowCullProperties = property;
         }
 

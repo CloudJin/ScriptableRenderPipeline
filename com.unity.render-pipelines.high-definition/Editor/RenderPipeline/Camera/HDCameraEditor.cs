@@ -53,6 +53,14 @@ namespace UnityEditor.Rendering.HighDefinition
         RenderTexture m_PreviewTexture;
         Camera m_PreviewCamera;
         HDAdditionalCameraData m_PreviewAdditionalCameraData;
+
+        enum ShadowCullingDebugType
+        {
+            Depth,
+            Shadowmap
+        }
+        bool m_DebugShadowCulling;
+        ShadowCullingDebugType m_DebugShadowCullingType = ShadowCullingDebugType.Shadowmap;
         void OnEnable()
         {
             m_SerializedCamera = new SerializedHDCamera(serializedObject);
@@ -83,11 +91,16 @@ namespace UnityEditor.Rendering.HighDefinition
             HDCameraUI.Inspector.Draw(m_SerializedCamera, this);
 
             EditorGUI.BeginChangeCheck();
-            var obj = (GameObject)EditorGUILayout.ObjectField("Debug Renderer", m_dstObj, typeof(GameObject), true);
+            var obj = (GameObject)EditorGUILayout.ObjectField("Renderer To Debug", m_dstObj, typeof(GameObject), true);
             if (m_dstObj != obj)
             {
                 m_dstObj = obj;
                 EditorUtility.SetDirty(target);
+            }
+            m_DebugShadowCulling = EditorGUILayout.Toggle("Debug Shadow Culling", m_DebugShadowCulling);
+            if (m_DebugShadowCulling)
+            {
+                m_DebugShadowCullingType = (ShadowCullingDebugType)EditorGUILayout.EnumPopup("DebugType", (System.Enum)m_DebugShadowCullingType);
             }
             EditorGUI.EndChangeCheck();
             m_SerializedCamera.Apply();

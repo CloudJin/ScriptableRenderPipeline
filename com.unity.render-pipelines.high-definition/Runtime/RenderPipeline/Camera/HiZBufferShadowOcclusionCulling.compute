@@ -4,18 +4,33 @@
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/TextureXR.hlsl"
 
-#pragma debug
+#define Enable_Debug 1
 
 struct InstanceData
 {
-	float3 boundsCenter;         // 3
-	float3 boundsExtents;        // 6
+	float3 boundsCenter;        
+	float3 boundsExtents;        
 };
+#if Enable_Debug
 struct DebugData
 {
-	float4 mipmap;
-	float4 mipmapOffsetSize;
-	float4 minMaxXY;
+	float4 mipmapDepth;
+	float4 mipmapOffsetSizeDepth;
+	float4 minMaxXYInCameraSpace;
+	
+	float4 mipmapShadowmap;
+	float4 mipmapOffsetSizeShadowmap;
+	float4 minMaxXYInLightSpace;
+};
+#endif
+
+struct ShadowVolume
+{
+	// the AABB is in the light space NDC
+	float3 boundsCenter;
+	float padding;
+	float3 boundsExtents;  
+	float depth;
 };
 //--------------------------------------------------------------------------------------
 // Pragmas
@@ -30,6 +45,8 @@ struct DebugData
 #define THREAD_GROUP_SIZE_Z 1
 #define LOD00_RANGE 500
 #define LOD01_RANGE 2000
+
+
 //--------------------------------------------------------------------------------------
 // Constant Buffers
 //--------------------------------------------------------------------------------------
@@ -38,10 +55,14 @@ CBUFFER_START(cb)
 	float4x4 _UNITY_MATRIX_VP2;
 	float4x4 _UNITY_MATRIX_VP3;
 	float4x4 _UNITY_MATRIX_VP4;
+	float4x4 _UNITY_MATRIX_LIGHT_TO_CAMERA1;
+	float4x4 _UNITY_MATRIX_LIGHT_TO_CAMERA2;
+	float4x4 _UNITY_MATRIX_LIGHT_TO_CAMERA3;
+	float4x4 _UNITY_MATRIX_LIGHT_TO_CAMERA4;
 
 	float3 _CamPosition;
 	float3 _ViewerPosition;
-	//float2 _ViewportSize;	
+	float2 _ViewportSize;	
 	int2 _Resolution;
 	
 	uint _UseHighPrecision;
@@ -49,25 +70,32 @@ CBUFFER_START(cb)
 	uint _IsDirectional;
 CBUFFER_END
 
-RW_TEXTURE2D_X(float, _DepthMipChain);
+RW_TEXTURE2D_X(float, _DepthPyramid);
 RW_TEXTURE2D(float, _ShadowmapPyramid);
-float3 _clipMin;
-float3 _clipMax;
+uniform float3 _clipMin;
+uniform float3 _clipMax;
+uniform ShadowVolume _shadowVolume;
 //--------------------------------------------------------------------------------------
 // Structured Buffers
 //--------------------------------------------------------------------------------------
 StructuredBuffer<InstanceData> _InstanceDataBuffer;
-StructuredBuffer<uint4> _MipmapOffset;
+StructuredBuffer<uint4> _ShadowmapMipmapOffset;
+StructuredBuffer<uint4> _DepthMipmapOffset;
 RWStructuredBuffer<uint> _IsVisibleBuffer;
+#if Enable_Debug
 RWStructuredBuffer<DebugData> _debugBuffer;
+#endif
 //--------------------------------------------------------------------------------------
 // Kernels & Functions
 //--------------------------------------------------------------------------------------
 #if UNITY_REVERSED_Z
-# define MIN_DEPTH(l, r) max(l, r)
-#else
 # define MIN_DEPTH(l, r) min(l, r)
+# define MAX_DEPTH(l, r) max(l, r)
+#else
+# define MIN_DEPTH(l, r) max(l, r)
+# define MAX_DEPTH(l, r) min(l, r)
 #endif
+
 inline uint IsViewerOutsideObjBounds(float3 pos, float3 minPos, float3 maxPos)
 {
     float boundsSize = distance(maxPos, minPos);
@@ -75,56 +103,107 @@ inline uint IsViewerOutsideObjBounds(float3 pos, float3 minPos, float3 maxPos)
             + (distance(pos, minPos) > boundsSize));
 }
 
-
-inline float GatherMinDepth4Point(float2 minXY, float2 maxXY, uint mip, int cascadeIndex)
+inline ShadowVolume CalculateShadowVolume(float farestDepth, float nearestDepth)
 {
-	//float2 scale = _ViewportSize / _MipmapOffset[0].zw;
-	float2 scale = float2(1, 1);
-	float2 mipmapTextureSize = float2(_MipmapOffset[mip + cascadeIndex * 10].zw);
-	uint2 offset = _MipmapOffset[mip + cascadeIndex * 10].xy;
-	int2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize * scale) + offset;
-	int2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize * scale) + offset;
-	int2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize * scale) + offset;
-	int2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize * scale) + offset;
-		
-	// uint2 corner0 = float2(floor(minXY.x * mipmapTextureSize.x), floor(minXY.y * mipmapTextureSize.y)) + offset;
-	// uint2 corner1 = float2(floor(minXY.x * mipmapTextureSize.x), ceil(maxXY.y * mipmapTextureSize.y)) + offset;
-	// uint2 corner2 = float2(ceil(maxXY.x * mipmapTextureSize.x), floor(minXY.y * mipmapTextureSize.y)) + offset;
-	// uint2 corner3 = float2(ceil(maxXY.x * mipmapTextureSize.x), ceil(maxXY.y * mipmapTextureSize.y)) + offset;
-		
+	ShadowVolume volume;
+	volume.boundsCenter = float3((_clipMin.x + _clipMax.x) / 2, (_clipMin.y + _clipMax.y) / 2, (farestDepth + nearestDepth) / 2);
+	volume.boundsExtents = float3((_clipMax.x - _clipMin.x) / 2, (_clipMax.y - _clipMin.y) / 2, abs(farestDepth - nearestDepth) / 2);
+	volume.depth = farestDepth;
+	return volume;
+}
+
+inline float GatherMinDepth4PointInShadowmap(float2 minXY, float2 maxXY, uint mip, int cascadeIndex, int id)
+{
+	float2 mipmapTextureSize = float2(_ShadowmapMipmapOffset[mip + cascadeIndex * 10].zw);
+	uint2 offset = _ShadowmapMipmapOffset[mip + cascadeIndex * 10].xy;
+	int2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize) + offset;
+	int2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize) + offset;
+	int2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize) + offset;
+	int2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize) + offset;
+
 	float4 depth;
 	depth.x = _ShadowmapPyramid[(corner0)];
 	depth.y = _ShadowmapPyramid[(corner1)];
 	depth.z = _ShadowmapPyramid[(corner2)];
 	depth.w = _ShadowmapPyramid[(corner3)];
-	float HiZdepth = min(min(depth.x, depth.y), min(depth.z, depth.w));  
-	//HiZdepth = max(max(depth.x, depth.y), max(depth.z, depth.w));  
-	HiZdepth *= 2;
-	return HiZdepth;
+	float farestDepth = MIN_DEPTH(MIN_DEPTH(depth.x, depth.y), MIN_DEPTH(depth.z, depth.w));  
+	float nearestDepth = MAX_DEPTH(MAX_DEPTH(depth.x, depth.y), MAX_DEPTH(depth.z, depth.w));  
+
+	_shadowVolume = CalculateShadowVolume(farestDepth, nearestDepth);
+	return _shadowVolume.depth;
 }
 
-inline float GatherMinDepth(float2 minXY, float2 maxXY, uint mip, int cascadeIndex)
+inline float GatherMinDepth4PointInDepthBuffer(float2 minXY, float2 maxXY, uint mip, int id)
 {
-	float2 mipmapTextureSize = float2(_MipmapOffset[mip + cascadeIndex * 10].zw); 
-	float2 offset = _MipmapOffset[mip + cascadeIndex * 10].xy;
-	//float2 scale = _ViewportSize / _MipmapOffset[0 + cascadeIndex * 10].zw;
-	float2 scale = float2(1, 1);
-	int2 cornerMin = floor(minXY * mipmapTextureSize * scale + offset);
-	int2 cornerMax = floor(maxXY * mipmapTextureSize * scale + offset);
-	//int2 cornerMin = round(minXY * mipmapTextureSize * scale + offset);
-	//int2 cornerMax = floor(maxXY * mipmapTextureSize * scale + offset);
+	float2 scale = _ViewportSize / _DepthMipmapOffset[0].zw;
+	float2 mipmapTextureSize = float2(_DepthMipmapOffset[mip].zw);
+	uint2 offset = _DepthMipmapOffset[mip].xy;
+	int2 corner0 = floor(float2(minXY.x, minXY.y) * mipmapTextureSize * scale) + offset;
+	int2 corner1 = floor(float2(minXY.x, maxXY.y) * mipmapTextureSize * scale) + offset;
+	int2 corner2 = floor(float2(maxXY.x, minXY.y) * mipmapTextureSize * scale) + offset;
+	int2 corner3 = floor(float2(maxXY.x, maxXY.y) * mipmapTextureSize * scale) + offset;
+
+	float4 depth;
+	depth.x = _DepthPyramid[COORD_TEXTURE2D_X(corner0)];
+	depth.y = _DepthPyramid[COORD_TEXTURE2D_X(corner1)];
+	depth.z = _DepthPyramid[COORD_TEXTURE2D_X(corner2)];
+	depth.w = _DepthPyramid[COORD_TEXTURE2D_X(corner3)];
+	float farestDepth = MIN_DEPTH(MIN_DEPTH(depth.x, depth.y), MIN_DEPTH(depth.z, depth.w));  
+	float nearestDepth = MAX_DEPTH(MAX_DEPTH(depth.x, depth.y), MAX_DEPTH(depth.z, depth.w));  
+
+	//_debugBuffer[id].minMaxXYInCameraSpace.xy = float2(farestDepth, nearestDepth);
+	
+	
+	_shadowVolume = CalculateShadowVolume(farestDepth, nearestDepth);
+	return _shadowVolume.depth;
+}
+
+inline float GatherMinDepthInShadowmap(float2 minXY, float2 maxXY, uint mip, int cascadeIndex)
+{
+	float2 mipmapTextureSize = float2(_ShadowmapMipmapOffset[mip + cascadeIndex * 10].zw); 
+	float2 offset = _ShadowmapMipmapOffset[mip + cascadeIndex * 10].xy;
+	int2 cornerMin = floor(minXY * mipmapTextureSize + offset);
+	int2 cornerMax = floor(maxXY * mipmapTextureSize + offset);
 		
-	float HiZdepth = 1;
+	float farestDepth = 1.0f;
+	float nearestDepth = 1.0f;
 	for(int y = cornerMin.y; y <= cornerMax.y; ++y)
 	{
 		for(int x = cornerMin.x; x <= cornerMax.x; ++x)
 		{
 			int2 xy = int2(x, y);
-			HiZdepth = min(HiZdepth, _ShadowmapPyramid[(xy)]);
+			float depth = _ShadowmapPyramid[(xy)];
+			farestDepth = MIN_DEPTH(farestDepth, depth);
+			nearestDepth = MAX_DEPTH(nearestDepth, depth);
 		}  
 	}
-	HiZdepth *= 2;	
-	return HiZdepth;
+	
+	_shadowVolume = CalculateShadowVolume(farestDepth, nearestDepth);
+	return _shadowVolume.depth;
+}
+
+inline float GatherMinDepthInDepthBuffer(float2 minXY, float2 maxXY, uint mip)
+{
+	float2 scale = _ViewportSize / _DepthMipmapOffset[0].zw;
+	float2 mipmapTextureSize = float2(_DepthMipmapOffset[mip].zw); 
+	float2 offset = _DepthMipmapOffset[mip].xy;
+	int2 cornerMin = floor(minXY * mipmapTextureSize * scale + offset);
+	int2 cornerMax = floor(maxXY * mipmapTextureSize * scale + offset);
+		
+	float farestDepth = 1.0f;
+	float nearestDepth = 1.0f;
+	for(int y = cornerMin.y; y <= cornerMax.y; ++y)
+	{
+		for(int x = cornerMin.x; x <= cornerMax.x; ++x)
+		{
+			int2 xy = int2(x, y);
+			float depth = _DepthPyramid[COORD_TEXTURE2D_X(xy)];
+			farestDepth = MIN_DEPTH(farestDepth, depth);
+			nearestDepth = MAX_DEPTH(nearestDepth, depth);
+		}  
+	}
+	_shadowVolume = CalculateShadowVolume(farestDepth, nearestDepth);
+	return _shadowVolume.depth;
 }
 
 inline uint isCascadeVisibleFromDepth(float clipMinZ, float depth)
@@ -132,51 +211,110 @@ inline uint isCascadeVisibleFromDepth(float clipMinZ, float depth)
 	return (clipMinZ) >= depth - 0.000015; // last is an epsilon
 }
 
+inline uint isCascadeVisibleFromDepthInDepthBuffer(float clipMinZ, float depth)
+{
+	return (1 - clipMinZ) >= depth * 2 - 0.000015;
+}
+
+InstanceData TestReturnValue()
+{
+	InstanceData data;
+	data.boundsCenter = float3(1, 1, 1);
+	return data;
+}
+
+void TestReturnValue2(InstanceData data)
+{
+	//InstanceData data;
+	data.boundsCenter = float3(1, 1, 1);
+}
+
 // Hi-Z Culling
-inline uint isCascadeVisibleAfterOcclusionCulling(int cascadeIndex, float clipMinX, float clipMaxX, float clipMinY, float clipMaxY, float clipMinZ, int id)
+inline uint isCascadeVisibleInShadowmap(int cascadeIndex, float3 clipMin, float3 clipMax, int id)
 {
     // Change it to 0 - 1 range 
-    float2 minXY = float2(clipMinX, clipMinY) * 0.5f + 0.5f;
-    float2 maxXY = float2(clipMaxX, clipMaxY) * 0.5f + 0.5f;
+    float2 minXY = float2(clipMin.x, clipMin.y) * 0.5f + 0.5f;
+    float2 maxXY = float2(clipMax.x, clipMax.y) * 0.5f + 0.5f;
     minXY = clamp(minXY, 0, 1);
 	maxXY = clamp(maxXY, 0, 1);
 	
     // Calculate hi-Z buffer mip
-    //int2 size = (maxXY - minXY) * _ViewportSize.xy;
 	int2 size = (maxXY - minXY) * _Resolution;
-	
-    //float mip = ceil(log2(max(size.x, size.y) / 2.0f));
-	int mip = ceil(log2(max(size.x, size.y)));
+	int mip = ceil(log2(max(size.x, size.y) / 2.0f));
 	int maxMip = ceil(log2(_Resolution.x)) - 1;
     mip = clamp(mip, 0, maxMip);
 	
-	//mip = 0;
+	//mip = 0; 
 	float HiZdepth = 1;  
-	HiZdepth = GatherMinDepth4Point(minXY, maxXY, mip, cascadeIndex);
-	HiZdepth = _UseHighPrecision && isCascadeVisibleFromDepth(clipMinZ, HiZdepth) > 0.0f && mip > 1? GatherMinDepth(minXY, maxXY, mip - 1, cascadeIndex): HiZdepth;
-	HiZdepth = _UseHighPrecision && isCascadeVisibleFromDepth(clipMinZ, HiZdepth) > 0.0f && mip > 2? GatherMinDepth(minXY, maxXY, mip - 2, cascadeIndex): HiZdepth;
+	HiZdepth = GatherMinDepth4PointInShadowmap(minXY, maxXY, mip, cascadeIndex, id);
+	HiZdepth = _UseHighPrecision && isCascadeVisibleFromDepth(clipMin.z, HiZdepth) > 0.0f && mip > 1? GatherMinDepthInShadowmap(minXY, maxXY, mip - 1, cascadeIndex): HiZdepth;
+	HiZdepth = _UseHighPrecision && isCascadeVisibleFromDepth(clipMin.z, HiZdepth) > 0.0f && mip > 2? GatherMinDepthInShadowmap(minXY, maxXY, mip - 2, cascadeIndex): HiZdepth;
 	
-	//if (cascadeIndex == 0)
+#if Enable_Debug
+	if (cascadeIndex == 0)
 	{
 		//mip = 0;
-		_debugBuffer[id].mipmap.x = mip;
-		_debugBuffer[id].mipmap.y = clipMinZ;
-		//_debugBuffer[id].mipmap.xy = float2(clipMinX, clipMinY);
-		_debugBuffer[id].mipmap.z = HiZdepth;
-		//_debugBuffer[id].mipmap.zw = float2(clipMaxX, clipMaxY);
-		_debugBuffer[id].minMaxXY.xy = minXY;
+		_debugBuffer[id].mipmapShadowmap.x = mip;
+		_debugBuffer[id].mipmapShadowmap.y = clipMin.z;
+		//_debugBuffer[id].mipmapShadowmap.xy = float2(clipMinX, clipMinY);
+		_debugBuffer[id].mipmapShadowmap.z = HiZdepth;
+		//_debugBuffer[id].mipmapShadowmap.zw = float2(clipMaxX, clipMaxY);
+		_debugBuffer[id].minMaxXYInLightSpace.xy = minXY;
 		//_debugBuffer[id].minMaxXY.x = clipMinX;
 		//_debugBuffer[id].minMaxXY.y = clipMinY;
-		_debugBuffer[id].minMaxXY.zw = maxXY;
+		_debugBuffer[id].minMaxXYInLightSpace.zw = maxXY;
 		//_debugBuffer[id].minMaxXY.z = clipMaxX;
 		//_debugBuffer[id].minMaxXY.w = clipMaxY;
-		_debugBuffer[id].mipmapOffsetSize.xy = _MipmapOffset[mip + cascadeIndex * 10].xy;
-		_debugBuffer[id].mipmapOffsetSize.zw = _MipmapOffset[mip + cascadeIndex * 10].zw;
+		_debugBuffer[id].mipmapOffsetSizeShadowmap.xy = _ShadowmapMipmapOffset[mip + cascadeIndex * 10].xy;
+		_debugBuffer[id].mipmapOffsetSizeShadowmap.zw = _ShadowmapMipmapOffset[mip + cascadeIndex * 10].zw;
 	}
-		
-    //return HiZdepth > 0? isCascadeVisibleFromDepth(clipMinZ, HiZdepth): 0; 
-	return isCascadeVisibleFromDepth(clipMinZ, HiZdepth); 
+#endif
+	return isCascadeVisibleFromDepth(clipMin.z, HiZdepth); 
 }
+
+// Hi-Z Culling
+inline uint isCascadeVisibleInDepthBuffer(float3 clipMin, float3 clipMax, int id)
+{
+    // Change it to 0 - 1 range 
+    float2 minXY = float2(clipMin.x, clipMin.y) * 0.5f + 0.5f;
+    float2 maxXY = float2(clipMax.x, clipMax.y) * 0.5f + 0.5f;
+    minXY = clamp(minXY, 0, 1);
+	maxXY = clamp(maxXY, 0, 1);
+	
+    // Calculate hi-Z buffer mip
+	int2 size = (maxXY - minXY) *  _ViewportSize.xy;
+	int mip = ceil(log2(max(size.x, size.y)));
+	int maxMip = ceil(log2( _ViewportSize.x));
+    mip = clamp(mip, 0, 10);
+
+	float HiZdepth = 1;  
+	HiZdepth = GatherMinDepth4PointInDepthBuffer(minXY, maxXY, mip, id);  
+	HiZdepth = (_UseHighPrecision && isCascadeVisibleFromDepth(clipMin.z, HiZdepth) > 0.0f && mip > 1)? GatherMinDepthInDepthBuffer(minXY, maxXY, mip - 1): HiZdepth;
+	HiZdepth = (_UseHighPrecision && isCascadeVisibleFromDepth(clipMin.z, HiZdepth) > 0.0f && mip > 2)? GatherMinDepthInDepthBuffer(minXY, maxXY, mip - 2): HiZdepth;
+	
+#if Enable_Debug
+	if (1)
+	{
+		//mip = 0;
+		_debugBuffer[id].mipmapDepth.x = mip;
+		_debugBuffer[id].mipmapDepth.y = 1 - clipMin.z;
+		//_debugBuffer[id].mipmapDepth.xy = float2(clipMinX, clipMinY);
+		_debugBuffer[id].mipmapDepth.z = HiZdepth;
+		//_debugBuffer[id].mipmapDepth.zw = float2(clipMaxX, clipMaxY);
+		_debugBuffer[id].minMaxXYInCameraSpace.xy = minXY;
+		_debugBuffer[id].minMaxXYInCameraSpace.zw = maxXY; 
+
+		//_debugBuffer[id].minMaxXYInCameraSpace = float4(clipMin.x, clipMax.x, clipMin.y, clipMax.y);
+		_debugBuffer[id].mipmapOffsetSizeDepth.xy = _DepthMipmapOffset[mip].xy;
+		_debugBuffer[id].mipmapOffsetSizeDepth.zw = _DepthMipmapOffset[mip].zw;
+		
+		//_debugBuffer[id].minMaxXY.xyz = data.boundsCenter;
+	}
+#endif	
+    //return HiZdepth > 0? isCascadeVisibleFromDepth(clipMinZ, HiZdepth): 0; 
+	return isCascadeVisibleFromDepthInDepthBuffer(clipMin.z, HiZdepth); 
+}
+
 
 inline uint isVisibleAfterFrustumCulling(float4 clipPos)
 {
@@ -187,15 +325,28 @@ inline uint isVisibleAfterFrustumCulling(float4 clipPos)
             || clipPos.y > clipPos.w) 
             ? 0 : 1;
 }
-inline uint DetailCulling(float clipMinX, float clipMaxX, float clipMinY, float clipMaxY)
+
+inline uint DetailCulling(float3 clipMin, float3 clipMax)
 {
-	float2 minXY = float2(clipMinX, clipMinY) * 0.5f + 0.5f;
-    float2 maxXY = float2(clipMaxX, clipMaxY) * 0.5f + 0.5f;
+	float2 minXY = float2(clipMin.x, clipMin.y) * 0.5f + 0.5f;
+    float2 maxXY = float2(clipMax.x, clipMax.y) * 0.5f + 0.5f;
     minXY = clamp(minXY, 0, 1);
 	maxXY = clamp(maxXY, 0, 1);
 	
 	int2 cornerMin = round(minXY * _Resolution); 
 	int2 cornerMax = round(maxXY * _Resolution);
+	return cornerMin.x == cornerMax.x || cornerMin.y == cornerMax.y? 0: 1;
+}
+
+inline uint DetailCullingInDepth(float3 clipMin, float3 clipMax)
+{
+	float2 minXY = float2(clipMin.x, clipMin.y) * 0.5f + 0.5f;
+    float2 maxXY = float2(clipMax.x, clipMax.y) * 0.5f + 0.5f;
+    minXY = clamp(minXY, 0, 1);
+	maxXY = clamp(maxXY, 0, 1);
+	
+	int2 cornerMin = round(minXY * _ViewportSize); 
+	int2 cornerMax = round(maxXY * _ViewportSize);
 	return cornerMin.x == cornerMax.x || cornerMin.y == cornerMax.y? 0: 1;
 }
 
@@ -205,7 +356,7 @@ inline uint CalculateMinMax(float4 corner[8], float4x4 matrixVP, uint id)
 	//float4 clipPos = mul(matrixVP, float4(corner[0].xyz - _CamPosition, 1.0f));
 	float4 clipPos = mul(matrixVP, corner[0]);
 	
-	//_debugBuffer[id].minMaxXY = clipPos;
+	//_debugBuffer[id].minMaxXYInCameraSpace = clipPos;
 	
     uint isInFrustum = isVisibleAfterFrustumCulling(clipPos);
     clipPos.xyz = clipPos.xyz / clipPos.w;
@@ -214,7 +365,6 @@ inline uint CalculateMinMax(float4 corner[8], float4x4 matrixVP, uint id)
     float clipMinY = clipPos.y;
     float clipMaxY = clipPos.y;
     float clipMinZ = clipPos.z;
-	//_debugBuffer[id].minMaxXY = clipPos;
 	
     //float minDistanceToCamera = distance(instance.boundsCenter.xyz, _ViewerPosition.xyz);
     [unroll]
@@ -222,8 +372,6 @@ inline uint CalculateMinMax(float4 corner[8], float4x4 matrixVP, uint id)
     {
         //clipPos = mul(matrixVP, float4(corner[i].xyz - _CamPosition, 1.0f));
 		clipPos = mul(matrixVP, corner[i]);
-		
-		
         // For Frustum
         isInFrustum = saturate(isInFrustum + isVisibleAfterFrustumCulling(clipPos));
         // For HiZ
@@ -245,6 +393,41 @@ inline uint CalculateMinMax(float4 corner[8], float4x4 matrixVP, uint id)
 	//_debugBuffer[id].minMaxXY.zw = _clipMax.xy;
 	//_debugBuffer[id].minMaxXY = clipPos;
 	return isInFrustum;
+}
+
+inline uint IsVisibleInDepthBuffer(int cascadeIndex, int id)
+{
+	float4x4 matrixLight2CameraClip[4];
+	matrixLight2CameraClip[0] = _UNITY_MATRIX_LIGHT_TO_CAMERA1;
+	matrixLight2CameraClip[1] = _UNITY_MATRIX_LIGHT_TO_CAMERA2;
+	matrixLight2CameraClip[2] = _UNITY_MATRIX_LIGHT_TO_CAMERA3;
+	matrixLight2CameraClip[3] = _UNITY_MATRIX_LIGHT_TO_CAMERA4;
+	
+	float3 minShadowBoxPos = _shadowVolume.boundsCenter - _shadowVolume.boundsExtents;
+	float3 maxShadowBoxPos = _shadowVolume.boundsCenter + _shadowVolume.boundsExtents + 0.01f;
+	float4 shadowBoxCorners[8];
+	shadowBoxCorners[0] = float4(minShadowBoxPos.x, minShadowBoxPos.y, minShadowBoxPos.z, 1.0);
+	shadowBoxCorners[1] = float4(minShadowBoxPos.x, minShadowBoxPos.y, maxShadowBoxPos.z, 1.0);
+	shadowBoxCorners[2] = float4(minShadowBoxPos.x, maxShadowBoxPos.y, minShadowBoxPos.z, 1.0);
+	shadowBoxCorners[3] = float4(minShadowBoxPos.x, maxShadowBoxPos.y, maxShadowBoxPos.z, 1.0);
+	shadowBoxCorners[4] = float4(maxShadowBoxPos.x, minShadowBoxPos.y, minShadowBoxPos.z, 1.0);
+	shadowBoxCorners[5] = float4(maxShadowBoxPos.x, minShadowBoxPos.y, maxShadowBoxPos.z, 1.0);
+	shadowBoxCorners[6] = float4(maxShadowBoxPos.x, maxShadowBoxPos.y, minShadowBoxPos.z, 1.0);
+	shadowBoxCorners[7] = float4(maxShadowBoxPos.x, maxShadowBoxPos.y, maxShadowBoxPos.z, 1.0); 
+	
+	uint isInFrustum = CalculateMinMax(shadowBoxCorners, matrixLight2CameraClip[cascadeIndex], id);
+	//uint isViewerOutsideObj = _IsDirectional == 0? IsViewerOutsideObjBounds(_ViewerPosition, minShadowBoxPos, maxShadowBoxPos): 1;
+	uint isCascadeVisible = isInFrustum;	
+	isCascadeVisible *= (isCascadeVisible > 0)? DetailCullingInDepth(_clipMin, _clipMax): 1;
+
+	_debugBuffer[id].mipmapDepth = isCascadeVisible > 0? -1: _debugBuffer[id].mipmapDepth.z;
+	isCascadeVisible *= (isCascadeVisible > 0)? isCascadeVisibleInDepthBuffer(_clipMin, _clipMax, id): 0;
+	//isCascadeVisible = isInFrustum;
+	
+	//_debugBuffer[id].minMaxXYInCameraSpace.xy = minShadowBoxPos.xy;
+	//_debugBuffer[id].minMaxXYInCameraSpace.zw = maxShadowBoxPos.xy;
+	
+	return isCascadeVisible;
 }
 //--------------------------------------------------------------------------------------
 // Kernels
@@ -286,12 +469,14 @@ inline void CSMain (
 	matrixVP[2] = _UNITY_MATRIX_VP3;
 	matrixVP[3] = _UNITY_MATRIX_VP4;
 	
+	
 	uint cascadeVisible[4];
 	uint isVisible = 0;
-	_clipMin = 0;
-	_clipMax = 0;
 	
-	_debugBuffer[tID].mipmap.z = -1;
+#if Enable_Debug
+	_debugBuffer[tID].mipmapShadowmap.z = -1;
+#endif
+	int cascadeIndex = -1;
 	[unroll]
 	for (int i = 0; i != 1; ++i)
 	{ 
@@ -306,23 +491,24 @@ inline void CSMain (
 		
 		// Do we pass the frustum culling...?
 		uint isCascadeVisible = isInFrustum * (skipCalculate == 0? 1: 0);	
-		isCascadeVisible *= (isCascadeVisible > 0)? DetailCulling(_clipMin.x, _clipMax.x, _clipMin.y, _clipMax.y): 1;
-
-		_debugBuffer[tID].mipmap.z = isCascadeVisible > 0? -1: _debugBuffer[tID].mipmap.z;
-		// Do we pass the occlusion culling...?
-		isCascadeVisible *= (isCascadeVisible > 0)? isCascadeVisibleAfterOcclusionCulling(i, _clipMin.x, _clipMax.x, _clipMin.y, _clipMax.y, _clipMin.z, tID): 1;
-
+		isCascadeVisible *= (isCascadeVisible > 0)? DetailCulling(_clipMin, _clipMax): 1;
+#if Enable_Debug
+		_debugBuffer[tID].mipmapShadowmap.z = isCascadeVisible > 0? -1: _debugBuffer[tID].mipmapShadowmap.z;
+#endif
+		// Do we pass the shadow occlusion culling in light space?
+		isCascadeVisible *= (isCascadeVisible > 0)? isCascadeVisibleInShadowmap(i, _clipMin, _clipMax, tID): 1;
 		//isCascadeVisible = isInFrustum;
+		cascadeIndex = isCascadeVisible > 0 && cascadeIndex < 0? i: cascadeIndex;
+		
 		
 		cascadeVisible[i] = isCascadeVisible;
-		
 		isVisible += cascadeVisible[i];
-		
-		//isVisible = skipCalculate;
 	}
 	
-	//_debugBuffer[tID].minMaxXY.xy = _clipMin.xy;
-	//_debugBuffer[tID].minMaxXY.zw = _clipMax.xy;
+	// Do we pass the shadow occlusion culling in camera space?
+	isVisible *= isVisible > 0 && cascadeIndex >= 0? IsVisibleInDepthBuffer(cascadeIndex, tID): 1;
+	//_debugBuffer[tID].minMaxXYInCameraSpace.x = isVisible;
+	//_debugBuffer[tID].minMaxXYInCameraSpace.y = cascadeIndex;
 		
     
     // Output

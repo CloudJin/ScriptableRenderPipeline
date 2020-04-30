@@ -24,17 +24,18 @@ namespace UnityEditor.Rendering.HighDefinition
             if (m_hdCamera == null)
                 m_hdCamera = HDCamera.GetOrCreate(target as Camera);
 
-            //             var mgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager;
-            //             var info = mgr.GetDepthBufferMipChainInfoRef();
-            //             DrawDebugView(mgr.GetDepthTextureOC(), info.mipLevelSizes[0].x, info.mipLevelSizes[0].y);
-
-            var mgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).shadowManager;
-            DrawDebugView(mgr.CascadeAtlasPyramid, m_hdCamera.actualWidth, m_hdCamera.actualHeight);
+            var rtMgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).sharedRTManager;
+            var info = rtMgr.GetDepthBufferMipChainInfoRef();
+            var shadowMgr = (RenderPipelineManager.currentPipeline as HDRenderPipeline).shadowManager;
+            if (m_DebugShadowCulling && m_DebugShadowCullingType == ShadowCullingDebugType.Shadowmap)
+                DrawDebugView(shadowMgr.CascadeAtlasPyramid, m_hdCamera.actualWidth, m_hdCamera.actualHeight);
+            else
+                DrawDebugView(rtMgr.GetDepthTextureOC(), info.mipLevelSizes[0].x, info.mipLevelSizes[0].y);
         }
 
 
         static private GameObject m_dstObj;
-        RenderTexture m_depthTexture;
+        RenderTexture m_orignalTexture;
         RenderTexture m_dstTexture;
 
 
@@ -57,8 +58,9 @@ namespace UnityEditor.Rendering.HighDefinition
             
             FetchDebugInfo(m_dstObj.name);
 
-            if (m_dstTexture == null || m_dstTexture.width != renderTexture.width || m_dstTexture.height != renderTexture.height)
+            if (m_orignalTexture != renderTexture || m_dstTexture == null || m_dstTexture.width != renderTexture.width || m_dstTexture.height != renderTexture.height)
             {
+                m_orignalTexture = renderTexture;
                 if (m_dstTexture)
                     m_dstTexture.Release();
                 m_dstTexture = new RenderTexture(renderTexture.width, renderTexture.height, 0, RenderTextureFormat.RFloat);
@@ -83,7 +85,7 @@ namespace UnityEditor.Rendering.HighDefinition
             cornerMin.y = m_debugInfo.minMaxXY.y * m_debugInfo.mipmapOffsetSize.w + m_debugInfo.mipmapOffsetSize.y;
             //cornerMin.x = m_debugInfo.minMaxXY.x;
             //cornerMin.y = m_debugInfo.minMaxXY.y;
-            Vector2 cornerMax = new Vector2();  
+            Vector2 cornerMax = new Vector2();   
             cornerMax.x = m_debugInfo.minMaxXY.z * m_debugInfo.mipmapOffsetSize.z + m_debugInfo.mipmapOffsetSize.x;
             cornerMax.y = m_debugInfo.minMaxXY.w * m_debugInfo.mipmapOffsetSize.w + m_debugInfo.mipmapOffsetSize.y;
             //cornerMax.x = m_debugInfo.minMaxXY.z;
@@ -138,15 +140,37 @@ namespace UnityEditor.Rendering.HighDefinition
             if (m_dstObj == null)
                 return;
 
-
-
             //HDRenderPipeline pipeline = (RenderPipelineManager.currentPipeline as HDRenderPipeline);
             HiZBufferDebugInfo info;
             //UnityEditor.CameraEditorUtils.QueryHiZBufferDebugInfo(m_dstObj.name, out info);
-            UnityEngine.Rendering.ScriptableRenderContext.QueryHiZBufferDebugInfo(objName, out info);
-            m_debugInfo.mipmap = info.mipmap;
-            m_debugInfo.minMaxXY = info.minMaxXY;
-            m_debugInfo.mipmapOffsetSize = info.mipmapOffsetSize;
+            UnityEngine.Rendering.ScriptableRenderContext.QueryHiZBufferDebugInfo(objName, m_DebugShadowCulling, out info);
+            if (m_DebugShadowCulling)
+            {
+                switch (m_DebugShadowCullingType)
+                {
+                    case ShadowCullingDebugType.Depth:
+                        {
+                            m_debugInfo.mipmap = info.mipmapDepth;
+                            m_debugInfo.minMaxXY = info.minMaxXYDepth;
+                            m_debugInfo.mipmapOffsetSize = info.mipmapOffsetSizeDepth;
+                            break;
+                        }
+                    case ShadowCullingDebugType.Shadowmap:
+                        {
+                            m_debugInfo.mipmap = info.mipmapShadowmap;
+                            m_debugInfo.minMaxXY = info.minMaxXYShadowmap;
+                            m_debugInfo.mipmapOffsetSize = info.mipmapOffsetSizeShadowmap;
+                            break;
+                        }
+                }
+                
+            }
+            else
+            {
+                m_debugInfo.mipmap = info.mipmapDepth;
+                m_debugInfo.minMaxXY = info.minMaxXYDepth;
+                m_debugInfo.mipmapOffsetSize = info.mipmapOffsetSizeDepth;
+            }
         }
 
         void OnOverlayGUI(Object target, SceneView sceneView)

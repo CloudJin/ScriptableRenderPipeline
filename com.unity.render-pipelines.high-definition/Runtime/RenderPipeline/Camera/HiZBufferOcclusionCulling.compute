@@ -13,6 +13,10 @@ struct DebugData
 	float4 mipmap;
 	float4 mipmapOffsetSize;
 	float4 minMaxXY;
+	
+	float4 padding1; 
+	float4 padding2;
+	float4 padding3;
 };
 //--------------------------------------------------------------------------------------
 // Pragmas
@@ -149,13 +153,13 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 	HIZdepth = _UseHighPrecision && IsVisibleFromDepth(clipMinZ, HIZdepth) > 0.0f? GatherMinDepth(minXY, maxXY, mip - 1): HIZdepth;
 	HIZdepth = _UseHighPrecision && IsVisibleFromDepth(clipMinZ, HIZdepth) > 0.0f? GatherMinDepth(minXY, maxXY, mip - 2): HIZdepth;
 	
-	// _debugBuffer[id].mipmap.x = mip;
-	// _debugBuffer[id].mipmap.y = 1 - clipMinZ;
-	// _debugBuffer[id].mipmap.z = HIZdepth;
-	// _debugBuffer[id].minMaxXY.xy = minXY;
-	// _debugBuffer[id].minMaxXY.zw = maxXY;
-	// _debugBuffer[id].mipmapOffsetSize.xy = _MipmapOffset[mip].xy;
-	// _debugBuffer[id].mipmapOffsetSize.zw = _MipmapOffset[mip].zw;
+	_debugBuffer[id].mipmap.x = mip;
+	_debugBuffer[id].mipmap.y = 1 - clipMinZ;
+	_debugBuffer[id].mipmap.z = HIZdepth;
+	_debugBuffer[id].minMaxXY.xy = minXY;
+	_debugBuffer[id].minMaxXY.zw = maxXY;
+	_debugBuffer[id].mipmapOffsetSize.xy = _MipmapOffset[mip].xy;
+	_debugBuffer[id].mipmapOffsetSize.zw = _MipmapOffset[mip].zw;
 		
     return IsVisibleFromDepth(clipMinZ, HIZdepth); 
 }
