@@ -3,11 +3,15 @@
 //--------------------------------------------------------------------------------------
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/TextureXR.hlsl"
+
+#define Enable_Debug 0
+
 struct InstanceData
 {
 	float3 boundsCenter;         // 3
 	float3 boundsExtents;        // 6
 };
+#if Enable_Debug
 struct DebugData
 {
 	float4 mipmap;
@@ -18,6 +22,7 @@ struct DebugData
 	float4 padding2;
 	float4 padding3;
 };
+#endif
 //--------------------------------------------------------------------------------------
 // Pragmas
 //--------------------------------------------------------------------------------------
@@ -50,7 +55,9 @@ RW_TEXTURE2D_X(float, _DepthMipChain);
 StructuredBuffer<InstanceData> _InstanceDataBuffer;
 StructuredBuffer<uint4> _MipmapOffset;
 RWStructuredBuffer<uint> _IsVisibleBuffer;
+#if Enable_Debug
 RWStructuredBuffer<DebugData> _debugBuffer;
+#endif
 //--------------------------------------------------------------------------------------
 // Kernels & Functions
 //--------------------------------------------------------------------------------------
@@ -152,7 +159,7 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 	HIZdepth = GatherMinDepth4Point(minXY, maxXY, mip);
 	HIZdepth = _UseHighPrecision && IsVisibleFromDepth(clipMinZ, HIZdepth) > 0.0f? GatherMinDepth(minXY, maxXY, mip - 1): HIZdepth;
 	HIZdepth = _UseHighPrecision && IsVisibleFromDepth(clipMinZ, HIZdepth) > 0.0f? GatherMinDepth(minXY, maxXY, mip - 2): HIZdepth;
-	
+#if Enable_Debug
 	_debugBuffer[id].mipmap.x = mip;
 	_debugBuffer[id].mipmap.y = 1 - clipMinZ;
 	_debugBuffer[id].mipmap.z = HIZdepth;
@@ -160,7 +167,7 @@ inline uint IsVisibleAfterOcclusionCulling(InstanceData instance, float clipMinX
 	_debugBuffer[id].minMaxXY.zw = maxXY;
 	_debugBuffer[id].mipmapOffsetSize.xy = _MipmapOffset[mip].xy;
 	_debugBuffer[id].mipmapOffsetSize.zw = _MipmapOffset[mip].zw;
-		
+#endif
     return IsVisibleFromDepth(clipMinZ, HIZdepth); 
 }
 
