@@ -13,6 +13,8 @@ namespace UnityEditor.Rendering.HighDefinition
             upgraders.Add(new StandardsToHDLitMaterialUpgrader("Standard", "HDRP/Lit"));
             upgraders.Add(new StandardsToHDLitMaterialUpgrader("Standard (Specular setup)", "HDRP/Lit"));
             upgraders.Add(new StandardsToHDLitMaterialUpgrader("Standard (Roughness setup)", "HDRP/Lit"));
+            upgraders.Add(new StandardsToHDLitMaterialUpgrader("Standard (MSAO)", "HDRP/Lit"));
+            upgraders.Add(new StandardsToHDLitMaterialUpgrader("Nature/SpeedTree2", "HDRP/Lit"));
 
             upgraders.Add(new UnlitsToHDUnlitUpgrader("Unlit/Color", "HDRP/Unlit"));
             upgraders.Add(new UnlitsToHDUnlitUpgrader("Unlit/Texture", "HDRP/Unlit"));
