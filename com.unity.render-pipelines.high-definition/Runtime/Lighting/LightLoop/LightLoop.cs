@@ -2146,7 +2146,7 @@ namespace UnityEngine.Rendering.HighDefinition
                         }
                         else
                         {
-                            m_ShadowManager.IdentifyViewProjMatrix();
+                            //m_ShadowManager.IdentifyViewProjMatrix();
                         }
 
                         // Directional rendering side, it is separated as it is always visible so no volume to handle here

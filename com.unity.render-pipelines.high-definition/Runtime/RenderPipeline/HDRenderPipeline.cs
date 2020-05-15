@@ -2128,10 +2128,13 @@ namespace UnityEngine.Rendering.HighDefinition
                     RenderShadowMaps(renderContext, cmd, cullingResults, hdCamera);
 
                     hdCamera.SetupGlobalParams(cmd, m_Time, m_LastTime, m_FrameCount);
-                }
 
-                CopyShadowMapCascade(hdCamera, cmd);
-                GenerateShadowMapPyramid(hdCamera, cmd);
+                    if (hdCamera.camera.cameraType == CameraType.Game)
+                    {
+                        CopyShadowMapCascade(hdCamera, cmd);   
+                        GenerateShadowMapPyramid(hdCamera, cmd);
+                    }
+                }
 
                 if (!hdCamera.frameSettings.SSRRunsAsync())
                 {

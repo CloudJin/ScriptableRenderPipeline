@@ -4,7 +4,7 @@
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/TextureXR.hlsl"
 
-#define Enable_Debug 0
+#define Enable_Debug 1
 
 struct InstanceData
 {
@@ -251,7 +251,7 @@ inline void CSMain (
         // Do we pass the frustum culling...?
         isVisible *= _ShouldFrustumCull ? isInFrustum : 1;
 		
-		isVisible *= isVisible > 0? DetailCulling(clipMinX, clipMaxX, clipMinY, clipMaxY): 1;
+		//isVisible *= isVisible > 0? DetailCulling(clipMinX, clipMaxX, clipMinY, clipMaxY): 1;
         // Do we pass the occlusion culling...?
         isVisible *= (_ShouldOcclusionCull * isVisible > 0) ? IsVisibleAfterOcclusionCulling(instance, clipMinX, clipMaxX, clipMinY, clipMaxY, clipMinZ, tID) : 1;
     }
