@@ -78,6 +78,8 @@ RW_TEXTURE2D(float, _ShadowmapPyramid);
 // Structured Buffers
 //--------------------------------------------------------------------------------------
 StructuredBuffer<InstanceData> _InstanceDataBuffer;
+//StructuredBuffer<float4x4> _MatrixVP;
+//StructuredBuffer<float4x4> _MatrixLightToCamera;
 StructuredBuffer<uint4> _ShadowmapMipmapOffset;
 StructuredBuffer<uint4> _DepthMipmapOffset;
 RWStructuredBuffer<uint> _IsVisibleBuffer;
@@ -536,7 +538,7 @@ inline void CSMain (
 		{
 			uint visible = 0;
 			ShadowVolume temp = isCascadeVisibleInShadowmap(i, visible, clipMin, clipMax, tID);
-			if (shadowVolume.cascadeIndex < 4)
+			if (temp.cascadeIndex < 4)
 				shadowVolume = temp;
 			
 			isCascadeVisible *= visible;
@@ -551,7 +553,7 @@ inline void CSMain (
 	// Do we pass the shadow occlusion culling in camera space?
 	//_debugBuffer[tID].minMaxXYInCameraSpace.xyz = shadowVolume.boundsCenter;
 	if (isVisible > 0 && shadowVolume.cascadeIndex < 4)
-		isVisible *= IsVisibleInDepthBuffer(shadowVolume, tID); 
+		isVisible *= IsVisibleInDepthBuffer(shadowVolume, tID);  
 	//isVisible *= (((shadowVolume.cascadeIndex < 4) && (shadowVolume.cascadeIndex >= 0))? (IsVisibleInDepthBuffer(shadowVolume, tID)): 1);
 	
 	//_debugBuffer[tID].mipmapShadowmap.w = shadowVolume.cascadeIndex;
