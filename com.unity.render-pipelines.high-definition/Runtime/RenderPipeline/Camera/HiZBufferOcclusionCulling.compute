@@ -9,8 +9,11 @@
 struct InstanceData
 {
 	float3 boundsCenter;         // 3
+	float padding0;
 	float3 boundsExtents;        // 6
+	float padding1;
 };
+
 #if Enable_Debug
 struct DebugData
 {
@@ -253,6 +256,8 @@ inline void CSMain (
 		
 		//isVisible *= isVisible > 0? DetailCulling(clipMinX, clipMaxX, clipMinY, clipMaxY): 1;
         // Do we pass the occlusion culling...?
+		//if ((_ShouldOcclusionCull * isVisible > 0))
+		//	isVisible = IsVisibleAfterOcclusionCulling(instance, clipMinX, clipMaxX, clipMinY, clipMaxY, clipMinZ, tID);
         isVisible *= (_ShouldOcclusionCull * isVisible > 0) ? IsVisibleAfterOcclusionCulling(instance, clipMinX, clipMaxX, clipMinY, clipMaxY, clipMinZ, tID) : 1;
     }
     // Output

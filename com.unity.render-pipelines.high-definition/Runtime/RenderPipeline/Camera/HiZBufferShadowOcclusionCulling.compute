@@ -8,8 +8,10 @@
 
 struct InstanceData
 {
-	float3 boundsCenter;        
+	float3 boundsCenter;  
+	float padding0;
 	float3 boundsExtents;        
+	float padding1;
 };
 #if Enable_Debug
 struct DebugData
@@ -31,7 +33,7 @@ struct ShadowVolume
 	uint cascadeIndex;
 	float3 boundsExtents;  
 	float depth;
-	float nearestDepth;
+	//float nearestDepth;
 };
 //--------------------------------------------------------------------------------------
 // Pragmas
@@ -110,7 +112,7 @@ ShadowVolume CalculateShadowVolume(float2 clipMin, float2 clipMax, float farestD
 	volume.boundsCenter = float3((clipMin.x + clipMax.x) / 2, (clipMin.y + clipMax.y) / 2, (farestDepth + nearestDepth) / 2);
 	volume.boundsExtents = float3(abs(clipMax.x - clipMin.x) / 2, abs(clipMax.y - clipMin.y) / 2, abs(farestDepth - nearestDepth) / 2);
 	volume.depth = farestDepth;
-	volume.nearestDepth = nearestDepth;
+	//volume.nearestDepth = nearestDepth;
 	return volume;
 }
 
