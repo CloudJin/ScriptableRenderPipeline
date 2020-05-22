@@ -4,7 +4,8 @@
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/TextureXR.hlsl"
 
-#define Enable_Debug 1
+#define Enable_Debug 0
+#define Enable_Bit 0
 
 struct InstanceData
 {
@@ -71,7 +72,6 @@ CBUFFER_START(cb)
 	uint _UseHighPrecision;
 	int _CascadeCount;
 	uint _IsDirectional;
-	uint _SkipShadowPass2;
 CBUFFER_END
 
 RW_TEXTURE2D_X(float, _DepthPyramid);
@@ -84,7 +84,11 @@ StructuredBuffer<InstanceData> _InstanceDataBuffer;
 //StructuredBuffer<float4x4> _MatrixLightToCamera;
 StructuredBuffer<uint4> _ShadowmapMipmapOffset;
 StructuredBuffer<uint4> _DepthMipmapOffset;
+#if Enable_Bit
+RWByteAddressBuffer _IsVisibleBuffer;
+#else
 RWStructuredBuffer<uint> _IsVisibleBuffer;
+#endif
 #if Enable_Debug
 RWStructuredBuffer<DebugData> _debugBuffer; 
 #endif
@@ -466,8 +470,10 @@ inline void CSMain (
     // Calculate the instance index, only correct if the THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z
 	// and dipathed group num Y and Z are all 1. 
     uint tID = _dispatchThreadID.x;
+#if !Enable_Bit
     // Reset the visible state
     _IsVisibleBuffer[tID] = 0;
+#endif	
     //_ShadowisCascadeVisibleBuffer[tID] = 0;
     // Get the instance data
     InstanceData instance = _InstanceDataBuffer[tID];
@@ -561,7 +567,17 @@ inline void CSMain (
 	//_debugBuffer[tID].mipmapShadowmap.w = shadowVolume.cascadeIndex;
     //_debugBuffer[tID].minMaxXYInCameraSpace.xyz = shadowVolume.boundsExtents;
 	
+#if Enable_Bit
+	uint bitOffset = tID % 32;
+	uint bit = 1 << bitOffset;
+	//InterlockedAdd(_IsVisibleBuffer[tID % 32], bit);
+	//_IsVisibleBuffer.InterlockedOr(tID / 32 * 4, bit);
+	uint result = (isVisible > 0? 1: 0) << bitOffset;
+	if (result == 0)
+		_IsVisibleBuffer.InterlockedAnd(tID / 32 * 4, (1 << bitOffset) ^ 0xFFFFFFFF);
+#else
     // Output
     _IsVisibleBuffer[tID] = isVisible;
 	//_IsVisibleBuffer[tID] = 1;
+#endif
 }
