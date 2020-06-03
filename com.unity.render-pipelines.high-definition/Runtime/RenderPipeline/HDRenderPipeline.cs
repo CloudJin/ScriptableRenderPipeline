@@ -294,6 +294,7 @@ namespace UnityEngine.Rendering.HighDefinition
         bool m_RayTracingSupported = false;
         public bool rayTracingSupported { get { return m_RayTracingSupported; } }
 
+        ScriptableCullingParameters m_CullingParameters;
 
 #if UNITY_EDITOR
         bool m_ResourcesInitialized = false;
@@ -1293,15 +1294,15 @@ namespace UnityEngine.Rendering.HighDefinition
                             out var additionalCameraData,
                             out var hdCamera,
                             out var cullingParameters);
+                    m_CullingParameters = cullingParameters;
 
-                    ComputeShader cs = defaultResources?.shaders.hiZBufferComputeShader;
+                    ComputeShader cs = defaultResources?.shaders.hiZBufferCS;
                     ComputeShader shadowCS = defaultResources?.shaders.hiZBufferShadowComputeShader;
-                    cs.name = "HiZBufferOcclusionBuffer";
+                    cs.name = "HiZBufferOcclusionCullingEx";
                     renderContext.AssignHiZBufferComputeShader(cs, shadowCS);
                     if (camera.cameraType == CameraType.Game)
                     {
                         cs.SetVector(HDShaderIDs._ZBufferParams, hdCamera.zBufferParams);
-
                     }
                     
                     if (m_SharedRTManager.GetDepthBufferMipChainInfoRef().OffsetBufferNeedUpdate())
@@ -1314,13 +1315,11 @@ namespace UnityEngine.Rendering.HighDefinition
                             info.mipLevelSizes[0].y,
                             m_SharedRTManager.GetDepthBufferMipChainInfoRef().mipLevelCount);
                     }
-
-                    renderContext.AssignDirectionalShadowmapPyramidTexture(m_ShadowManager.CascadeAtlasPyramid,
-                        m_ShadowManager.ShadowResolution,
-                        m_ShadowManager.CascadeCountCache);
                     if (m_ShadowManager.NeedUpdateMipmapOffset)
                     {
-                        
+                        renderContext.AssignDirectionalShadowmapPyramidTexture(m_ShadowManager.CascadeAtlasPyramid,
+                        m_ShadowManager.ShadowResolution,
+                        m_ShadowManager.CascadeCountCache);
                         renderContext.RecalculateDirectionalShadowmapMipmapOffset(
                             m_ShadowManager.CascadeAtlasPyramid.rt.width,
                             m_ShadowManager.CascadeAtlasPyramid.rt.height,
@@ -1364,6 +1363,9 @@ namespace UnityEngine.Rendering.HighDefinition
 
                     if (skipRequest)
                     {
+//                         if (camera.cameraType == CameraType.Game && camera.useGpuOcclusionCulling)
+//                             renderContext.FetchCullResult(cullingResults.cullingResults, m_CullingParameters);
+
                         // Submit render context and free pooled resources for this request
                         UnityEngine.Rendering.RenderPipeline.BeginCameraRendering(renderContext, camera);
                         renderContext.Submit();
@@ -1742,6 +1744,9 @@ namespace UnityEngine.Rendering.HighDefinition
                             target.id = m_TemporaryTargetForCubemaps;
                         }
 
+                        // Fetch the result of GPU culling
+//                         if (renderRequest.hdCamera.camera.cameraType == CameraType.Game && renderRequest.hdCamera.camera.useGpuOcclusionCulling)
+//                             renderContext.FetchCullResult(renderRequest.cullingResults.cullingResults, m_CullingParameters);
 
                         // var aovRequestIndex = 0;
                         foreach (var aovRequest in renderRequest.hdCamera.aovRequests)
@@ -1926,6 +1931,9 @@ namespace UnityEngine.Rendering.HighDefinition
             // Frustum cull density volumes on the CPU. Can be performed as soon as the camera is set up.
             DensityVolumeList densityVolumes = PrepareVisibleDensityVolumeList(hdCamera, cmd, m_Time);
 
+            // Fetch the result of GPU culling
+//             if (camera.cameraType == CameraType.Game && camera.useGpuOcclusionCulling)
+//                 renderContext.FetchCullResult(cullingResults, m_CullingParameters);
             // Note: Legacy Unity behave like this for ShadowMask
             // When you select ShadowMask in Lighting panel it recompile shaders on the fly with the SHADOW_MASK keyword.
             // However there is no C# function that we can query to know what mode have been select in Lighting Panel and it will be wrong anyway. Lighting Panel setup what will be the next bake mode. But until light is bake, it is wrong.

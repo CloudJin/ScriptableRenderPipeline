@@ -241,8 +241,10 @@ namespace UnityEngine.Rendering.HighDefinition
             public Shader SMAAPS;
             [Reload("Runtime/PostProcessing/Shaders/TemporalAntialiasing.shader")]
             public Shader temporalAntialiasingPS;
-            [Reload("Runtime/RenderPipeline/Camera/HiZBufferOcclusionCulling.compute")]
+            [Reload("Runtime/RenderPipeline/Camera/HiZBufferOcclusionCull.compute")]
             public ComputeShader hiZBufferComputeShader;
+            [Reload("Runtime/RenderPipeline/Camera/HiZBufferOcclusionCullingEx.compute")]
+            public ComputeShader hiZBufferCS;
             [Reload("Runtime/RenderPipeline/Camera/HiZBufferShadowOcclusionCulling.compute")]
             public ComputeShader hiZBufferShadowComputeShader;
 
