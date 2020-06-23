@@ -170,6 +170,7 @@ MonoBehaviour:
       type: 3}
     hiZBufferComputeShader: {fileID: 7200000, guid: d34f9eec4466545448e5968f4dd56ab3,
       type: 3}
+    hiZBufferCS: {fileID: 7200000, guid: 664b64f86ac1ade4396f6b916f133a15, type: 3}
     hiZBufferShadowComputeShader: {fileID: 7200000, guid: 31cc86bad35897e41a5a5dbbc75a3799,
       type: 3}
   textures:

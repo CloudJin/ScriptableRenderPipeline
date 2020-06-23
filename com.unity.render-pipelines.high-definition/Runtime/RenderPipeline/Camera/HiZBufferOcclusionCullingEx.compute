@@ -4,7 +4,7 @@
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/TextureXR.hlsl"
 
-#define Enable_Debug 0
+#define Enable_Debug 1
 #define Enable_Bit 0
 
 struct InstanceData
@@ -300,7 +300,10 @@ inline uint isCascadeVisibleInDepthBuffer(float3 clipMin, float3 clipMax, int id
 	int2 size = (maxXY - minXY) *  _ViewportSize.xy;
 	int mip = ceil(log2(max(size.x, size.y)));
 	int maxMip = ceil(log2( _ViewportSize.x));
-    mip = clamp(mip, 0, 10);
+	if (_isShadowCaster)
+		mip = clamp(mip, 0, 7);
+	else 
+		mip = clamp(mip, 0, 10);
 
 	float HiZdepth = 1;  
 	HiZdepth = GatherMinDepth4PointInDepthBuffer(minXY, maxXY, mip, id);  
@@ -448,7 +451,8 @@ inline uint IsVisibleInDepthBuffer(ShadowVolume shadowVolume, int id)
 	uint isCascadeVisible = isInFrustum;	
 	//isCascadeVisible *= (isCascadeVisible > 0)? DetailCullingInDepth(clipMin, clipMax): 1;
 #if Enable_Debug
-	_debugBuffer[id].mipmapDepth.z = isCascadeVisible > 0? -1: _debugBuffer[id].mipmapDepth.z;
+	if (_debugShadow == _isShadowCaster)
+		_debugBuffer[id].mipmapDepth.z = isCascadeVisible > 0? -1: _debugBuffer[id].mipmapDepth.z;
 #endif
 	//isCascadeVisible *= (isCascadeVisible > 0)? isCascadeVisibleInDepthBuffer(clipMinCameraSpace, clipMaxCameraSpace, id): 0;
 	if (isCascadeVisible > 0)
