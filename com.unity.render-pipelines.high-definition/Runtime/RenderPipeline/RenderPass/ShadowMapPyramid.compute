@@ -15,9 +15,9 @@ CBUFFER_START(cb)
 CBUFFER_END
 
 #if UNITY_REVERSED_Z
-# define MIN_DEPTH(l, r) min(l, r)
-#else
 # define MIN_DEPTH(l, r) max(l, r)
+#else
+# define MIN_DEPTH(l, r) min(l, r)
 #endif
 
 // Downsample a depth texture by taking the min value of sampled pixels

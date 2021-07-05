@@ -68,15 +68,19 @@ namespace UnityEngine.Rendering.HighDefinition
                 TextureXR.slices,
                 colorFormat: GraphicsFormat.R32_SFloat,
                 filterMode: FilterMode.Point,
+                wrapMode: TextureWrapMode.Clamp,
                 dimension: TextureXR.dimension,
                 enableRandomWrite: true,
+                autoGenerateMips: false,
                 name: "CameraDepthBufferMipChainOC");
             m_CameraDepthBufferMipChainOCDebug = RTHandles.Alloc(ComputeDepthBufferMipChainSizeEx,
                 TextureXR.slices,
                 colorFormat: GraphicsFormat.R32_SFloat,
                 filterMode: FilterMode.Point,
+                wrapMode: TextureWrapMode.Clamp,
                 dimension: TextureXR.dimension,
                 enableRandomWrite: true,
+                autoGenerateMips: false,
                 name: "CameraDepthBufferMipChainDebug");
 
             if (settings.lowresTransparentSettings.enabled)
